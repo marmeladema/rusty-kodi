@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "kodi-jsonrpc-client",
+    "mpd-server-protocol",
+    "kodi-mpd-proxy",
+]

@@ -1,0 +1,375 @@
+macro_rules! define_method {
+    ($( #[$attr:meta] )* $root:ident . $method:ident { $( $( #[$arg_attr:meta] )* $arg_name:ident : $arg_ty:ty ),* } -> $return_ty:ty) => {
+        paste::paste! {
+            #[derive(Debug, serde::Serialize)]
+            $( #[$attr] )*
+            pub struct [<$root $method>] {
+                $($( #[$arg_attr] )* pub $arg_name: $arg_ty,)*
+            }
+
+            impl $crate::KodiMethod for [<$root $method>] {
+                const NAME: &'static str = std::concat!(std::stringify!($root), ".", std::stringify!($method));
+                type Response = $return_ty;
+            }
+        }
+    };
+}
+
+// Application methods
+
+define_method!(
+    #[doc="Retrieves the values of the given properties"]
+    Application.GetProperties {
+        properties: enumset::EnumSet<crate::types::application::property::Name>
+    } -> crate::types::application::property::Value
+);
+
+impl ApplicationGetProperties {
+    pub fn all() -> Self {
+        Self {
+            properties: enumset::EnumSet::all(),
+        }
+    }
+}
+
+define_method!(
+    Application.Quit {} -> String
+);
+
+define_method!(
+    Application.SetMute {
+        mute: crate::types::global::Toggle
+    } -> bool
+);
+
+define_method!(
+    Application.SetVolume {
+        volume: usize
+    } -> usize
+);
+
+// Audio Library methods
+
+define_method!(
+    AudioLibrary.Clean {
+        showdialogs: bool
+    } -> String
+);
+
+// AudioLibrary.Export
+
+// AudioLibrary.GetAlbumDetails
+
+// AudioLibrary.GetAlbums
+
+// AudioLibrary.GetArtistDetails
+
+// AudioLibrary.GetArtists
+
+// AudioLibrary.GetGenres
+
+// AudioLibrary.GetProperties
+
+// AudioLibrary.GetRecentlyAddedAlbums
+
+// AudioLibrary.GetRecentlyAddedSongs
+
+// AudioLibrary.GetRecentlyPlayedAlbums
+
+// AudioLibrary.GetRecentlyPlayedSongs
+
+// AudioLibrary.GetRoles
+
+// AudioLibrary.GetSongDetails
+
+// AudioLibrary.GetSongs
+
+define_method!(
+    #[derive(Default)]
+    AudioLibrary.GetSources {
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::library::fields::Source>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limits: Option<crate::types::list::Limits>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sort: Option<crate::types::list::Sort>
+    } -> AudioLibraryGetSourcesResponse
+);
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AudioLibraryGetSourcesResponse {
+    pub limits: crate::types::list::LimitsReturned,
+    #[serde(default)]
+    pub sources: Vec<crate::types::library::details::Source>,
+}
+
+// AudioLibrary.Scan
+
+// AudioLibrary.SetAlbumDetails
+
+// AudioLibrary.SetArtistDetails
+
+// AudioLibrary.SetSongDetails
+
+// Files methods
+
+define_method!(
+    #[derive(Default)]
+    Files.GetDirectory {
+        directory: String,
+        media: crate::types::files::Media,
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::list::fields::Files>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limits: Option<crate::types::list::Limits>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sort: Option<crate::types::list::Sort>
+    } -> FilesGetDirectoryResponse
+);
+
+impl FilesGetDirectory {
+    pub fn all_properties(directory: String, media: crate::types::files::Media) -> Self {
+        Self {
+            directory,
+            media,
+            properties: enumset::EnumSet::all(),
+            limits: None,
+            sort: None,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct FilesGetDirectoryResponse {
+    pub limits: crate::types::list::LimitsReturned,
+    #[serde(default)]
+    pub files: Vec<crate::types::list::item::File>,
+}
+
+define_method!(
+    #[derive(Default)]
+    Files.GetFileDetails {
+        file: String,
+        media: crate::types::files::Media,
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::list::fields::Files>
+    } -> FilesGetFileDetailsResponse
+);
+
+impl FilesGetFileDetails {
+    pub fn all_properties(file: String, media: crate::types::files::Media) -> Self {
+        Self {
+            file,
+            media,
+            properties: enumset::EnumSet::all(),
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FilesGetFileDetailsResponse {
+    FileDetails(crate::types::list::item::File),
+}
+
+// Files.GetSources
+
+// Files.PrepareDownload
+
+// Files.SetFileDetails
+
+// JSONRPC methods
+
+#[derive(Debug, serde::Deserialize)]
+pub enum JSONRPCVersionResponse {
+    #[serde(rename = "version")]
+    Version {
+        major: usize,
+        minor: usize,
+        patch: usize,
+    },
+}
+
+define_method!(
+    JSONRPC.Version {} -> JSONRPCVersionResponse
+);
+
+// Player methods
+
+define_method!(
+    Player.GetActivePlayers {} -> Vec<crate::types::player::ActivePlayer>
+);
+
+define_method!(
+    Player.GetItem {
+        #[serde(rename = "playerid")]
+        id: u8,
+        properties: enumset::EnumSet<crate::types::list::fields::All>
+    } -> PlayerGetItemResponse
+);
+
+impl PlayerGetItem {
+    pub fn all_properties(id: u8) -> Self {
+        Self {
+            id,
+            properties: enumset::EnumSet::all(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PlayerGetItemResponse {
+    Item(crate::types::list::item::All),
+}
+
+define_method!(
+    Player.GetProperties {
+        #[serde(rename = "playerid")]
+        id: u8,
+        properties: enumset::EnumSet<crate::types::player::property::Name>
+    } -> crate::types::player::property::Value
+);
+
+impl PlayerGetProperties {
+    pub fn all(id: u8) -> Self {
+        Self {
+            id,
+            properties: enumset::EnumSet::all(),
+        }
+    }
+}
+
+define_method!(
+    Player.Stop {
+        #[serde(rename = "playerid")]
+        id: u8
+    } -> String
+);
+
+impl PlayerStop {
+    pub fn new(id: u8) -> Self {
+        Self { id }
+    }
+}
+
+define_method!(
+    Player.PlayPause {
+        #[serde(rename = "playerid")]
+        id: u8,
+        play: crate::types::global::Toggle
+    } -> crate::types::player::Speed
+);
+
+impl PlayerPlayPause {
+    pub fn new(id: u8) -> Self {
+        Self {
+            id,
+            play: Default::default(),
+        }
+    }
+}
+
+define_method!(
+    Player.GoTo {
+        #[serde(rename = "playerid")]
+        id: u8,
+        to: crate::types::player::GoTo
+    } -> String
+);
+
+// Playlist methods
+
+define_method!(
+    Playlist.Add {
+        #[serde(rename = "playlistid")]
+        id: u8,
+        item: Vec<crate::types::playlist::Item>
+    } -> String
+);
+
+define_method!(
+    Playlist.Clear {
+        #[serde(rename = "playlistid")]
+        id: u8
+    } -> String
+);
+
+define_method!(
+    Playlist.GetItems {
+        #[serde(rename = "playlistid")]
+        id: u8,
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::list::fields::All>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limits: Option<crate::types::list::Limits>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sort: Option<crate::types::list::Sort>
+    } -> PlaylistGetItemsResponse
+);
+
+impl PlaylistGetItems {
+    pub fn all_properties(id: u8) -> Self {
+        Self {
+            id,
+            properties: enumset::EnumSet::all(),
+            limits: None,
+            sort: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct PlaylistGetItemsResponse {
+    #[serde(default)]
+    pub items: Vec<crate::types::list::item::All>,
+    pub limits: crate::types::list::LimitsReturned,
+}
+
+define_method!(
+    Playlist.GetPlaylists {} -> Vec<crate::types::playlist::Playlist>
+);
+
+define_method!(
+    Playlist.GetProperties {
+        #[serde(rename = "playlistid")]
+        id: u8,
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::playlist::property::Name>
+    } -> crate::types::playlist::property::Value
+);
+
+impl PlaylistGetProperties {
+    pub fn all(id: u8) -> Self {
+        Self {
+            id,
+            properties: enumset::EnumSet::all(),
+        }
+    }
+}
+
+define_method!(
+    Playlist.Insert {
+        #[serde(rename = "playlistid")]
+        id: u8,
+        position: usize,
+        item: Vec<crate::types::playlist::Item>
+    } -> String
+);
+
+define_method!(
+    Playlist.Remove {
+        #[serde(rename = "playlistid")]
+        id: u8,
+        position: usize
+    } -> String
+);
+
+define_method!(
+    Playlist.Swap {
+        #[serde(rename = "playlistid")]
+        id: u8,
+        position1: usize,
+        position2: usize
+    } -> String
+);
