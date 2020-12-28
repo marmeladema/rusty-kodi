@@ -20,17 +20,29 @@ where
 }
 
 #[derive(Debug)]
-enum KodiError {
+pub enum KodiError {
+    RequestSerialization {
+        method: String,
+        error: serde_json::error::Error,
+    },
+    RequestWriting {
+        method: String,
+        error: reqwest::Error,
+    },
+    ResponseReading {
+        method: String,
+        error: reqwest::Error,
+    },
+    ResponseDeserialization {
+        method: String,
+        payload: String,
+        error: serde_json::error::Error,
+    },
     Jsonrpc {
         method: String,
         id: usize,
         code: i64,
         message: String,
-    },
-    Deserialize {
-        method: String,
-        payload: String,
-        error: serde_json::error::Error,
     },
 }
 
@@ -70,13 +82,31 @@ impl<M: KodiMethod> KodiRequest<M> {
         self,
         client: &Client,
         url: Url,
-    ) -> Result<M::Response, Box<dyn std::error::Error + Send + Sync>> {
-        let body = serde_json::to_string(&self)?;
+    ) -> Result<M::Response, KodiError> {
+        let body =
+            serde_json::to_string(&self).map_err(|error| KodiError::RequestSerialization {
+                method: format!("{:?}", self),
+                error,
+            })?;
         event!(Level::DEBUG, "-> {body}", body = body);
-        let text = client.post(url).body(body).send().await?.text().await?;
+        let text = client
+            .post(url)
+            .body(body)
+            .send()
+            .await
+            .map_err(|error| KodiError::RequestWriting {
+                method: format!("{:?}", self),
+                error,
+            })?
+            .text()
+            .await
+            .map_err(|error| KodiError::ResponseReading {
+                method: format!("{:?}", self),
+                error,
+            })?;
         event!(Level::DEBUG, "<- {text}", text = text);
         let resp: KodiResponse<M::Response> =
-            serde_json::from_str(&text).map_err(|error| KodiError::Deserialize {
+            serde_json::from_str(&text).map_err(|error| KodiError::ResponseDeserialization {
                 method: format!("{:?}", self),
                 error,
                 payload: text,
@@ -126,7 +156,7 @@ impl KodiClient {
     pub async fn send_method<M: KodiMethod>(
         &self,
         method: M,
-    ) -> Result<M::Response, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<M::Response, KodiError> {
         KodiRequest::new(method, self.next_id.fetch_add(1, Ordering::Relaxed))
             .send(&self.client, self.url.clone())
             .await
