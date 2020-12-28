@@ -48,7 +48,13 @@ pub enum KodiError {
 
 impl std::fmt::Display for KodiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        match self {
+            Self::RequestSerialization { error, .. } => write!(f, "{}", error),
+            Self::RequestWriting { error, .. } => write!(f, "{}", error),
+            Self::ResponseReading { error, .. } => write!(f, "{}", error),
+            Self::ResponseDeserialization { error, .. } => write!(f, "{}", error),
+            Self::Jsonrpc { message, .. } => write!(f, "{}", message),
+        }
     }
 }
 

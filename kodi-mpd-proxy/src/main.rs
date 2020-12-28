@@ -116,24 +116,27 @@ impl CommandHandler for KodiProxyCommandHandler {
         status
     }
 
-    async fn list_directory(&mut self, url: Option<&Url>) -> Vec<DirEntry> {
+    async fn list_directory(
+        &mut self,
+        url: Option<&Url>,
+    ) -> Result<Vec<DirEntry>, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self
             .kodi_client
             .send_method(AudioLibraryGetSources::default())
-            .await
-            .unwrap();
+            .await?;
         let path = url
             .map(|url| url.to_file_path().unwrap())
             .unwrap_or(PathBuf::new());
         if path == Path::new("/") || path == Path::new("") {
-            resp.sources
+            Ok(resp
+                .sources
                 .into_iter()
                 .map(|source| DirEntry {
                     path: PathBuf::from(source.label),
                     last_modified: None,
                     file: None,
                 })
-                .collect()
+                .collect())
         } else {
             for source in resp.sources {
                 let base = Path::new(OsStr::from_bytes(source.label.as_bytes()));
@@ -146,9 +149,8 @@ impl CommandHandler for KodiProxyCommandHandler {
                             path.to_str().unwrap().to_owned(),
                             kodi_jsonrpc_client::types::files::Media::Music,
                         ))
-                        .await
-                        .unwrap();
-                    return entries
+                        .await?;
+                    return Ok(entries
                         .files
                         .into_iter()
                         .map(move |file| {
@@ -176,10 +178,10 @@ impl CommandHandler for KodiProxyCommandHandler {
                                 file,
                             }
                         })
-                        .collect();
+                        .collect());
                 }
             }
-            Vec::new()
+            Ok(Vec::new())
         }
     }
 

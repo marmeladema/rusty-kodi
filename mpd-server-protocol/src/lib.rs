@@ -207,7 +207,10 @@ pub trait CommandHandler {
     // fn url_parse(input: &str) -> Url;
 
     async fn get_status(&mut self) -> MPDStatus;
-    async fn list_directory(&mut self, path: Option<&Url>) -> Vec<DirEntry>;
+    async fn list_directory(
+        &mut self,
+        path: Option<&Url>,
+    ) -> Result<Vec<DirEntry>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Returns the current song in the queue.
     async fn queue_current(&mut self) -> Option<QueueEntry>;
@@ -342,23 +345,27 @@ async fn lsinfo(
     handler: &mut impl CommandHandler,
     url: Option<&Url>,
     buf: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    for entry in handler.list_directory(url).await {
+    let entries = match handler.list_directory(url).await {
+        Ok(entries) => entries,
+        Err(err) => return Ok(Err(CommandError::NoExist(err.to_string()))),
+    };
+    for entry in entries {
         entry.write_to(writer);
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
-    Ok(())
+    Ok(Ok(()))
 }
 
 async fn currentsong(
     stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
     handler: &mut impl CommandHandler,
     buf: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
@@ -367,21 +374,21 @@ async fn currentsong(
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
-    Ok(())
+    Ok(Ok(()))
 }
 
 async fn getvol(
     stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
     handler: &mut impl CommandHandler,
     buf: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
     write!(writer, "volume: {}\n", handler.volume_get().await).unwrap();
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
-    Ok(())
+    Ok(Ok(()))
 }
 
 async fn playlistid(
@@ -389,7 +396,7 @@ async fn playlistid(
     handler: &mut impl CommandHandler,
     id: Option<&BString>,
     buf: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
@@ -404,7 +411,7 @@ async fn playlistid(
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
-    Ok(())
+    Ok(Ok(()))
 }
 
 async fn playlistinfo(
@@ -412,7 +419,7 @@ async fn playlistinfo(
     handler: &mut impl CommandHandler,
     range: Option<RangeInclusive<usize>>,
     buf: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
@@ -421,7 +428,7 @@ async fn playlistinfo(
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
-    Ok(())
+    Ok(Ok(()))
 }
 
 async fn add(
@@ -429,9 +436,9 @@ async fn add(
     handler: &mut impl CommandHandler,
     path: &Path,
     _: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     handler.queue_add(path, None).await;
-    Ok(())
+    Ok(Ok(()))
 }
 
 async fn addid(
@@ -440,7 +447,7 @@ async fn addid(
     path: &Path,
     position: Option<usize>,
     buf: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
     if let Some(id) = handler.queue_add(path, position).await {
         buf.clear();
         let mut cursor = Cursor::new(&mut *buf);
@@ -449,7 +456,7 @@ async fn addid(
         let data = &cursor.get_ref()[..(cursor.position() as usize)];
         stream.write_all(data).await?;
     }
-    Ok(())
+    Ok(Ok(()))
 }
 
 impl MPDSubCommand {
@@ -461,9 +468,9 @@ impl MPDSubCommand {
     ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
         event!(Level::DEBUG, "Processing command: {:#?}", self);
         match self {
-            Self::Add(path) => add(stream, handler, path, buf).await?,
+            Self::Add(path) => add(stream, handler, path, buf).await,
             Self::AddId(path, pos) => {
-                addid(stream, handler, path, pos.as_ref().copied(), buf).await?
+                addid(stream, handler, path, pos.as_ref().copied(), buf).await
             }
             Self::Commands => {
                 stream.write_all(b"add\n").await?;
@@ -485,21 +492,22 @@ impl MPDSubCommand {
                 stream.write_all(b"stats\n").await?;
                 stream.write_all(b"stop\n").await?;
                 stream.write_all(b"urlhandlers\n").await?;
+                Ok(Ok(()))
             }
-            Self::CurrentSong => currentsong(stream, handler, buf).await?,
-            Self::Decoders => {}
-            Self::GetVol => getvol(stream, handler, buf).await?,
+            Self::CurrentSong => currentsong(stream, handler, buf).await,
+            Self::Decoders => Ok(Ok(())),
+            Self::GetVol => getvol(stream, handler, buf).await,
             Self::Idle => {
                 let cmd = parse_command_line(stream, buf).await?;
                 if let Some(cmd) = cmd {
                     if cmd == MPDCommand::Sub(MPDSubCommand::NoIdle) {
-                        return Ok(Ok(()));
+                        Ok(Ok(()))
                     } else {
-                        stream.shutdown();
-                        //return Ok(Err(ProcessError::Unknown(BString::from("invalid command"))));
+                        // stream.shutdown();
+                        Ok(Err(CommandError::Unknown(String::from("invalid command"))))
                     }
                 } else {
-                    return Ok(Ok(()));
+                    Ok(Ok(()))
                 }
             }
             Self::Invalid { name, args, reason } => {
@@ -520,26 +528,46 @@ impl MPDSubCommand {
                     "playlist does not exist".to_owned(),
                 )));
             }
-            Self::LsInfo(path) => lsinfo(stream, handler, path.as_ref(), buf).await?,
-            Self::Next => handler.next().await,
-            Self::NoIdle => {}
-            Self::NotCommands => {}
-            Self::Outputs => {}
-            Self::Pause(pause) => handler.pause(pause.as_ref().copied()).await,
-            Self::Play(pos) => handler.play(*pos).await,
-            Self::PlaylistId(id) => playlistid(stream, handler, id.as_ref(), buf).await?,
-            Self::PlaylistInfo(range) => {
-                playlistinfo(stream, handler, range.as_ref().cloned(), buf).await?
+            Self::LsInfo(path) => lsinfo(stream, handler, path.as_ref(), buf).await,
+            Self::Next => {
+                handler.next().await;
+                Ok(Ok(()))
             }
-            Self::Previous => handler.previous().await,
-            Self::SetVol(level) => handler.volume_set(*level).await,
-            Self::Status => handler.get_status().await.send(stream).await?,
-            Self::Stats => {}
-            Self::Stop => handler.stop().await,
-            Self::TagTypes(_) => {}
-            Self::UrlHandlers => {}
-        };
-        Ok(Ok(()))
+            Self::NoIdle => Ok(Ok(())),
+            Self::NotCommands => Ok(Ok(())),
+            Self::Outputs => Ok(Ok(())),
+            Self::Pause(pause) => {
+                handler.pause(pause.as_ref().copied()).await;
+                Ok(Ok(()))
+            }
+            Self::Play(pos) => {
+                handler.play(*pos).await;
+                Ok(Ok(()))
+            }
+            Self::PlaylistId(id) => playlistid(stream, handler, id.as_ref(), buf).await,
+            Self::PlaylistInfo(range) => {
+                playlistinfo(stream, handler, range.as_ref().cloned(), buf).await
+            }
+            Self::Previous => {
+                handler.previous().await;
+                Ok(Ok(()))
+            }
+            Self::SetVol(level) => {
+                handler.volume_set(*level).await;
+                Ok(Ok(()))
+            }
+            Self::Status => {
+                handler.get_status().await.send(stream).await?;
+                Ok(Ok(()))
+            }
+            Self::Stats => Ok(Ok(())),
+            Self::Stop => {
+                handler.stop().await;
+                Ok(Ok(()))
+            }
+            Self::TagTypes(_) => Ok(Ok(())),
+            Self::UrlHandlers => Ok(Ok(())),
+        }
     }
 }
 
