@@ -207,10 +207,7 @@ pub trait CommandHandler {
     // fn url_parse(input: &str) -> Url;
 
     async fn get_status(&mut self) -> MPDStatus;
-    async fn list_directory(
-        &mut self,
-        path: &Path,
-    ) -> Box<dyn Iterator<Item = DirEntry> + Send + Sync>;
+    async fn list_directory(&mut self, path: Option<&Url>) -> Vec<DirEntry>;
 
     /// Returns the current song in the queue.
     async fn queue_current(&mut self) -> Option<QueueEntry>;
@@ -235,6 +232,15 @@ pub trait CommandHandler {
 }
 
 #[derive(Debug, PartialEq)]
+enum TagTypes {
+    All,
+    Clear,
+    Disable(Vec<BString>),
+    Enable(Vec<BString>),
+    List,
+}
+
+#[derive(Debug, PartialEq)]
 enum MPDSubCommand {
     Add(PathBuf),
     AddId(PathBuf, Option<usize>),
@@ -250,7 +256,7 @@ enum MPDSubCommand {
     },
     ListPlaylist(BString),
     ListPlaylistInfo(BString),
-    LsInfo(Option<PathBuf>),
+    LsInfo(Option<url::Url>),
     Next,
     NoIdle,
     NotCommands,
@@ -264,7 +270,7 @@ enum MPDSubCommand {
     Status,
     Stats,
     Stop,
-    TagTypes,
+    TagTypes(TagTypes),
     UrlHandlers,
 }
 
@@ -295,7 +301,7 @@ impl MPDSubCommand {
             Self::Status => b"status",
             Self::Stats => b"stats",
             Self::Stop => b"stop",
-            Self::TagTypes => b"tagtypes",
+            Self::TagTypes(_) => b"tagtypes",
             Self::UrlHandlers => b"urlhandlers",
         })
     }
@@ -303,7 +309,7 @@ impl MPDSubCommand {
 
 #[derive(Clone, Debug, PartialEq)]
 enum CommandError {
-    UnknownCommand(String),
+    Unknown(String),
     InvalidArgument(String),
     NoExist(String),
 }
@@ -317,7 +323,7 @@ impl CommandError {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let (code, msg) = match self {
             CommandError::InvalidArgument(ref msg) => (2u8, msg),
-            CommandError::UnknownCommand(ref msg) => (5u8, msg),
+            CommandError::Unknown(ref msg) => (5u8, msg),
             CommandError::NoExist(ref msg) => (50u8, msg),
         };
         let mut buf = Vec::new();
@@ -334,13 +340,13 @@ impl CommandError {
 async fn lsinfo(
     stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
     handler: &mut impl CommandHandler,
-    path: Option<&Path>,
+    url: Option<&Url>,
     buf: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    for entry in handler.list_directory(path.unwrap_or(Path::new(""))).await {
+    for entry in handler.list_directory(url).await {
         entry.write_to(writer);
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
@@ -514,15 +520,7 @@ impl MPDSubCommand {
                     "playlist does not exist".to_owned(),
                 )));
             }
-            Self::LsInfo(path) => {
-                lsinfo(
-                    stream,
-                    handler,
-                    path.as_ref().map(|path| path.as_ref()),
-                    buf,
-                )
-                .await?
-            }
+            Self::LsInfo(path) => lsinfo(stream, handler, path.as_ref(), buf).await?,
             Self::Next => handler.next().await,
             Self::NoIdle => {}
             Self::NotCommands => {}
@@ -538,7 +536,7 @@ impl MPDSubCommand {
             Self::Status => handler.get_status().await.send(stream).await?,
             Self::Stats => {}
             Self::Stop => handler.stop().await,
-            Self::TagTypes => {}
+            Self::TagTypes(_) => {}
             Self::UrlHandlers => {}
         };
         Ok(Ok(()))
@@ -807,11 +805,26 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         args = rest;
         MPDCommand::Sub(MPDSubCommand::ListPlaylistInfo(playlist))
     } else if name.as_ref() == b"lsinfo" {
-        let (path, rest) = next_arg!(name, args, BString);
-        args = rest;
-        MPDCommand::Sub(MPDSubCommand::LsInfo(Some(
-            Vec::from(path).into_path_buf().unwrap(),
-        )))
+        if args.is_empty() {
+            MPDCommand::Sub(MPDSubCommand::LsInfo(None))
+        } else {
+            let (input, rest) = next_arg!(name, args, BString);
+            args = rest;
+            let input = Vec::from(input).into_string_lossy();
+            let base = Url::parse("file:///").unwrap();
+            let opts = Url::options().base_url(Some(&base));
+            match opts.parse(input.as_str()) {
+                Ok(url) => MPDCommand::Sub(MPDSubCommand::LsInfo(Some(url))),
+                Err(_) => {
+                    let msg = format!("Malformed URI");
+                    MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::Unknown(msg),
+                    })
+                }
+            }
+        }
     } else if name.as_ref() == b"next" {
         MPDCommand::Sub(MPDSubCommand::Next)
     } else if name.as_ref() == b"noidle" {
@@ -863,7 +876,42 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
     } else if name.as_ref() == b"stop" {
         MPDCommand::Sub(MPDSubCommand::Stop)
     } else if name.as_ref() == b"tagtypes" {
-        MPDCommand::Sub(MPDSubCommand::TagTypes)
+        if args.is_empty() {
+            MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::List))
+        } else {
+            let (cmd, rest) = next_arg!(name, args, BString);
+            args = rest;
+            match cmd.as_slice() {
+                b"all" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::All)),
+                b"clear" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Clear)),
+                b"disable" => {
+                    let mut tags = Vec::new();
+                    while !args.is_empty() {
+                        let (tag, rest) = next_arg!(name, args, BString);
+                        tags.push(tag);
+                        args = rest;
+                    }
+                    MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Disable(tags)))
+                }
+                b"enable" => {
+                    let mut tags = Vec::new();
+                    while !args.is_empty() {
+                        let (tag, rest) = next_arg!(name, args, BString);
+                        tags.push(tag);
+                        args = rest;
+                    }
+                    MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Enable(tags)))
+                }
+                _ => {
+                    let msg = format!("Unknown sub command");
+                    MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::InvalidArgument(msg),
+                    })
+                }
+            }
+        }
     } else if name.as_ref() == b"urlhandlers" {
         MPDCommand::Sub(MPDSubCommand::UrlHandlers)
     } else {
@@ -871,7 +919,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         return MPDCommand::Sub(MPDSubCommand::Invalid {
             name: BString::from(""),
             args: BString::from(args),
-            reason: CommandError::UnknownCommand(msg),
+            reason: CommandError::Unknown(msg),
         });
     };
 
@@ -953,7 +1001,7 @@ impl MPDCommand {
                         commands.push(MPDSubCommand::Invalid {
                             name: BString::from(""),
                             args: BString::from(""),
-                            reason: CommandError::UnknownCommand(msg),
+                            reason: CommandError::Unknown(msg),
                         })
                     }
                     Some(Self::ListEnd) => break,

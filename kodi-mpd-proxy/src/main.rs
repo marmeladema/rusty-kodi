@@ -5,9 +5,8 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, File, MPDState, MPDStatus, QueueEntry, Server,
+    CommandHandler, DirEntry, File, MPDState, MPDStatus, QueueEntry, Server, Url,
 };
-use reqwest::Url;
 use std::ffi::OsStr;
 use std::net::SocketAddr;
 use std::ops::RangeInclusive;
@@ -117,25 +116,28 @@ impl CommandHandler for KodiProxyCommandHandler {
         status
     }
 
-    async fn list_directory(
-        &mut self,
-        path: &Path,
-    ) -> Box<dyn Iterator<Item = DirEntry> + Send + Sync> {
+    async fn list_directory(&mut self, url: Option<&Url>) -> Vec<DirEntry> {
         let resp = self
             .kodi_client
             .send_method(AudioLibraryGetSources::default())
             .await
             .unwrap();
+        let path = url
+            .map(|url| url.to_file_path().unwrap())
+            .unwrap_or(PathBuf::new());
         if path == Path::new("/") || path == Path::new("") {
-            Box::new(resp.sources.into_iter().map(|source| DirEntry {
-                path: PathBuf::from(source.label),
-                last_modified: None,
-                file: None,
-            }))
+            resp.sources
+                .into_iter()
+                .map(|source| DirEntry {
+                    path: PathBuf::from(source.label),
+                    last_modified: None,
+                    file: None,
+                })
+                .collect()
         } else {
             for source in resp.sources {
                 let base = Path::new(OsStr::from_bytes(source.label.as_bytes()));
-                if let Ok(rest) = path.strip_prefix(base) {
+                if let Ok(rest) = path.strip_prefix("/").unwrap().strip_prefix(base) {
                     let mut path = PathBuf::from(&source.file);
                     path.push(rest);
                     let entries = self
@@ -146,34 +148,38 @@ impl CommandHandler for KodiProxyCommandHandler {
                         ))
                         .await
                         .unwrap();
-                    return Box::new(entries.files.into_iter().map(move |file| {
-                        let source_path = Path::new(OsStr::from_bytes(source.file.as_bytes()));
-                        let rest = Path::new(OsStr::from_bytes(file.file.as_bytes()))
-                            .strip_prefix(source_path)
-                            .unwrap();
-                        let mut path = PathBuf::from(&source.label);
-                        path.push(rest);
-                        let file = match file.filetype {
-                            KodiFileType::Directory => None,
-                            KodiFileType::File => Some(File {
-                                duration: file.duration,
-                                artist: file.artist,
-                                album: file.album,
-                                genre: file.genre,
-                                title: file.title,
-                                track: file.track,
-                                year: file.year,
-                            }),
-                        };
-                        DirEntry {
-                            path,
-                            last_modified: None,
-                            file,
-                        }
-                    }));
+                    return entries
+                        .files
+                        .into_iter()
+                        .map(move |file| {
+                            let source_path = Path::new(OsStr::from_bytes(source.file.as_bytes()));
+                            let rest = Path::new(OsStr::from_bytes(file.file.as_bytes()))
+                                .strip_prefix(source_path)
+                                .unwrap();
+                            let mut path = PathBuf::from(&source.label);
+                            path.push(rest);
+                            let file = match file.filetype {
+                                KodiFileType::Directory => None,
+                                KodiFileType::File => Some(File {
+                                    duration: file.duration,
+                                    artist: file.artist,
+                                    album: file.album,
+                                    genre: file.genre,
+                                    title: file.title,
+                                    track: file.track,
+                                    year: file.year,
+                                }),
+                            };
+                            DirEntry {
+                                path,
+                                last_modified: None,
+                                file,
+                            }
+                        })
+                        .collect();
                 }
             }
-            Box::new(std::iter::empty())
+            Vec::new()
         }
     }
 
@@ -379,7 +385,7 @@ impl CommandHandler for KodiProxyCommandHandler {
 struct Opts {
     /// Sets kodi JSON-RPC endpoint
     #[clap(short, long, default_value = "http://127.0.0.1:8080/jsonrpc")]
-    kodi: Url,
+    kodi: reqwest::Url,
 
     /// Sets listening socket address
     #[clap(short, long, default_value = "127.0.0.1:6600")]

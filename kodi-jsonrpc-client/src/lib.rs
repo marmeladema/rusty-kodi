@@ -78,11 +78,7 @@ impl<M: KodiMethod> KodiRequest<M> {
         }
     }
 
-    async fn send(
-        self,
-        client: &Client,
-        url: Url,
-    ) -> Result<M::Response, KodiError> {
+    async fn send(self, client: &Client, url: Url) -> Result<M::Response, KodiError> {
         let body =
             serde_json::to_string(&self).map_err(|error| KodiError::RequestSerialization {
                 method: format!("{:?}", self),
@@ -153,10 +149,7 @@ impl KodiClient {
         }
     }
 
-    pub async fn send_method<M: KodiMethod>(
-        &self,
-        method: M,
-    ) -> Result<M::Response, KodiError> {
+    pub async fn send_method<M: KodiMethod>(&self, method: M) -> Result<M::Response, KodiError> {
         KodiRequest::new(method, self.next_id.fetch_add(1, Ordering::Relaxed))
             .send(&self.client, self.url.clone())
             .await
