@@ -222,7 +222,11 @@ pub trait CommandHandler {
     async fn queue_get(&mut self, id: &BStr) -> Option<QueueEntry>;
 
     /// Adds a song to the queue and return it's id.
-    async fn queue_add(&mut self, path: &Path, pos: Option<usize>) -> Option<usize>;
+    async fn queue_add(
+        &mut self,
+        path: &Url,
+        pos: Option<usize>,
+    ) -> Result<Option<usize>, Box<dyn std::error::Error + Send + Sync>>;
 
     async fn previous(&mut self);
     async fn play(&mut self, pos: usize);
@@ -245,8 +249,8 @@ enum TagTypes {
 
 #[derive(Debug, PartialEq)]
 enum MPDSubCommand {
-    Add(PathBuf),
-    AddId(PathBuf, Option<usize>),
+    Add(Url),
+    AddId(Url, Option<usize>),
     Commands,
     CurrentSong,
     Decoders,
@@ -259,7 +263,7 @@ enum MPDSubCommand {
     },
     ListPlaylist(BString),
     ListPlaylistInfo(BString),
-    LsInfo(Option<url::Url>),
+    LsInfo(Option<Url>),
     Next,
     NoIdle,
     NotCommands,
@@ -434,21 +438,27 @@ async fn playlistinfo(
 async fn add(
     _: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
     handler: &mut impl CommandHandler,
-    path: &Path,
+    url: &Url,
     _: &mut Vec<u8>,
 ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
-    handler.queue_add(path, None).await;
-    Ok(Ok(()))
+    match handler.queue_add(url, None).await {
+        Ok(_) => Ok(Ok(())),
+        Err(err) => Ok(Err(CommandError::NoExist(err.to_string()))),
+    }
 }
 
 async fn addid(
     stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
     handler: &mut impl CommandHandler,
-    path: &Path,
+    url: &Url,
     position: Option<usize>,
     buf: &mut Vec<u8>,
 ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(id) = handler.queue_add(path, position).await {
+    let id = match handler.queue_add(url, position).await {
+        Ok(id) => id,
+        Err(err) => return Ok(Err(CommandError::NoExist(err.to_string()))),
+    };
+    if let Some(id) = id {
         buf.clear();
         let mut cursor = Cursor::new(&mut *buf);
         let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
@@ -468,10 +478,8 @@ impl MPDSubCommand {
     ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
         event!(Level::DEBUG, "Processing command: {:#?}", self);
         match self {
-            Self::Add(path) => add(stream, handler, path, buf).await,
-            Self::AddId(path, pos) => {
-                addid(stream, handler, path, pos.as_ref().copied(), buf).await
-            }
+            Self::Add(url) => add(stream, handler, url, buf).await,
+            Self::AddId(url, pos) => addid(stream, handler, url, pos.as_ref().copied(), buf).await,
             Self::Commands => {
                 stream.write_all(b"add\n").await?;
                 stream.write_all(b"addid\n").await?;
@@ -787,11 +795,24 @@ macro_rules! next_arg {
 fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
     let mut args = skip_whitespace(args);
     let cmd = if name.as_ref() == b"add" {
-        let (path, rest) = next_arg!(name, args, BString);
+        let (input, rest) = next_arg!(name, args, BString);
         args = rest;
-        MPDCommand::Sub(MPDSubCommand::Add(Vec::from(path).into_path_buf().unwrap()))
+        let input = Vec::from(input).into_string_lossy();
+        let base = Url::parse("file:///").unwrap();
+        let opts = Url::options().base_url(Some(&base));
+        match opts.parse(input.as_str()) {
+            Ok(url) => MPDCommand::Sub(MPDSubCommand::Add(url)),
+            Err(_) => {
+                let msg = format!("Malformed URI");
+                MPDCommand::Sub(MPDSubCommand::Invalid {
+                    name: BString::from(name),
+                    args: BString::from(args),
+                    reason: CommandError::Unknown(msg),
+                })
+            }
+        }
     } else if name.as_ref() == b"addid" {
-        let (path, rest) = next_arg!(name, args, BString);
+        let (input, rest) = next_arg!(name, args, BString);
         args = rest;
         let position = if !args.is_empty() {
             let (pos, rest) = next_arg!(name, args, usize);
@@ -800,10 +821,20 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         } else {
             None
         };
-        MPDCommand::Sub(MPDSubCommand::AddId(
-            Vec::from(path).into_path_buf().unwrap(),
-            position,
-        ))
+        let input = Vec::from(input).into_string_lossy();
+        let base = Url::parse("file:///").unwrap();
+        let opts = Url::options().base_url(Some(&base));
+        match opts.parse(input.as_str()) {
+            Ok(url) => MPDCommand::Sub(MPDSubCommand::AddId(url, position)),
+            Err(_) => {
+                let msg = format!("Malformed URI");
+                MPDCommand::Sub(MPDSubCommand::Invalid {
+                    name: BString::from(name),
+                    args: BString::from(args),
+                    reason: CommandError::Unknown(msg),
+                })
+            }
+        }
     } else if name.as_ref() == b"command_list_begin" {
         MPDCommand::ListBegin {
             ok: false,

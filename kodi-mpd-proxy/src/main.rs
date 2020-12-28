@@ -252,11 +252,17 @@ impl CommandHandler for KodiProxyCommandHandler {
         None
     }
 
-    async fn queue_add(&mut self, path: &Path, position: Option<usize>) -> Option<usize> {
+    async fn queue_add(
+        &mut self,
+        url: &Url,
+        position: Option<usize>,
+    ) -> Result<Option<usize>, Box<dyn std::error::Error + Send + Sync>> {
         use kodi_jsonrpc_client::types::list::item::FileType;
         use kodi_jsonrpc_client::types::playlist::*;
 
         let playlist_id = 2;
+
+        let path = url.to_file_path().unwrap();
 
         let FilesGetFileDetailsResponse::FileDetails(details) = self
             .kodi_client
@@ -264,8 +270,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                 path.to_str().unwrap().to_owned(),
                 kodi_jsonrpc_client::types::files::Media::Files,
             ))
-            .await
-            .unwrap();
+            .await?;
 
         let item = match details.filetype {
             FileType::File => Item::File {
@@ -296,7 +301,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                 .await
                 .unwrap();
         }
-        None
+        Ok(None)
     }
 
     async fn previous(&mut self) {
