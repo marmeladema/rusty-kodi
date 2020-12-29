@@ -235,6 +235,11 @@ pub trait CommandHandler {
         pos: Option<usize>,
     ) -> Result<Option<usize>, Box<dyn std::error::Error + Send + Sync>>;
 
+    async fn queue_delete(
+        &mut self,
+        range: RangeInclusive<usize>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
     async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     async fn previous(&mut self);
@@ -265,6 +270,7 @@ enum MPDSubCommand {
     Commands,
     CurrentSong,
     Decoders,
+    Delete(RangeInclusive<usize>),
     GetVol,
     Idle,
     Invalid {
@@ -310,6 +316,7 @@ impl MPDSubCommand {
             Self::Commands => b"commands",
             Self::CurrentSong => b"currentsong",
             Self::Decoders => b"decoders",
+            Self::Delete(_) => b"delete",
             Self::GetVol => b"getvol",
             Self::Idle => b"idle",
             Self::Invalid { name, .. } => name,
@@ -513,10 +520,13 @@ impl MPDSubCommand {
                 stream.write_all(b"commands\n").await?;
                 stream.write_all(b"currentsong\n").await?;
                 stream.write_all(b"decoders\n").await?;
+                stream.write_all(b"delete\n").await?;
                 stream.write_all(b"getvol\n").await?;
+                stream.write_all(b"idle\n").await?;
                 stream.write_all(b"listplaylist\n").await?;
                 stream.write_all(b"listplaylistinfo\n").await?;
                 stream.write_all(b"lsinfo\n").await?;
+                stream.write_all(b"next\n").await?;
                 stream.write_all(b"notcommands\n").await?;
                 stream.write_all(b"outputs\n").await?;
                 stream.write_all(b"pause\n").await?;
@@ -530,11 +540,16 @@ impl MPDSubCommand {
                 stream.write_all(b"status\n").await?;
                 stream.write_all(b"stats\n").await?;
                 stream.write_all(b"stop\n").await?;
+                stream.write_all(b"tagtypes\n").await?;
                 stream.write_all(b"urlhandlers\n").await?;
                 Ok(Ok(()))
             }
             Self::CurrentSong => currentsong(stream, handler, buf).await,
             Self::Decoders => Ok(Ok(())),
+            Self::Delete(range) => {
+                handler.queue_delete(range.clone()).await?;
+                Ok(Ok(()))
+            }
             Self::GetVol => getvol(stream, handler, buf).await,
             Self::Idle => {
                 let cmd = parse_command_line(stream, buf).await?;
@@ -895,6 +910,11 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::CurrentSong)
     } else if name.as_ref() == b"decoders" {
         MPDCommand::Sub(MPDSubCommand::Decoders)
+    } else if name.as_ref() == b"delete" {
+        let (arg, rest) = next_arg!(name, args, BString);
+        args = rest;
+        let range = RangeInclusive::from_bytes(arg.as_slice()).unwrap().0;
+        MPDCommand::Sub(MPDSubCommand::Delete(range))
     } else if name.as_ref() == b"idle" {
         MPDCommand::Sub(MPDSubCommand::Idle)
     } else if name.as_ref() == b"listplaylist" {

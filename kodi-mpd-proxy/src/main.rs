@@ -350,6 +350,20 @@ impl CommandHandler for KodiProxyCommandHandler {
         Ok(None)
     }
 
+    async fn queue_delete(
+        &mut self,
+        range: RangeInclusive<usize>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(id) = self.player.playlist() {
+            for position in range {
+                self.kodi_client
+                    .send_method(PlaylistRemove { id, position })
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(id) = self.player.playlist() {
             self.kodi_client.send_method(PlaylistClear { id }).await?;
