@@ -235,6 +235,12 @@ pub trait CommandHandler {
         pos: Option<usize>,
     ) -> Result<Option<usize>, Box<dyn std::error::Error + Send + Sync>>;
 
+    async fn queue_swap(
+        &mut self,
+        pos1: usize,
+        pos2: usize,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
     async fn queue_delete(
         &mut self,
         range: RangeInclusive<usize>,
@@ -303,6 +309,7 @@ enum MPDSubCommand {
     Status,
     Stats,
     Stop,
+    Swap(usize, usize),
     TagTypes(TagTypes),
     UrlHandlers,
 }
@@ -339,6 +346,7 @@ impl MPDSubCommand {
             Self::Status => b"status",
             Self::Stats => b"stats",
             Self::Stop => b"stop",
+            Self::Swap(..) => b"swap",
             Self::TagTypes(_) => b"tagtypes",
             Self::UrlHandlers => b"urlhandlers",
         })
@@ -540,6 +548,7 @@ impl MPDSubCommand {
                 stream.write_all(b"status\n").await?;
                 stream.write_all(b"stats\n").await?;
                 stream.write_all(b"stop\n").await?;
+                stream.write_all(b"swap\n").await?;
                 stream.write_all(b"tagtypes\n").await?;
                 stream.write_all(b"urlhandlers\n").await?;
                 Ok(Ok(()))
@@ -627,6 +636,10 @@ impl MPDSubCommand {
             Self::Stats => Ok(Ok(())),
             Self::Stop => {
                 handler.stop().await;
+                Ok(Ok(()))
+            }
+            Self::Swap(pos1, pos2) => {
+                handler.queue_swap(*pos1, *pos2).await?;
                 Ok(Ok(()))
             }
             Self::TagTypes(_) => Ok(Ok(())),
@@ -1025,6 +1038,12 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::Stats)
     } else if name.as_ref() == b"stop" {
         MPDCommand::Sub(MPDSubCommand::Stop)
+    } else if name.as_ref() == b"swap" {
+        let (pos1, rest) = next_arg!(name, args, usize);
+        args = rest;
+        let (pos2, rest) = next_arg!(name, args, usize);
+        args = rest;
+        MPDCommand::Sub(MPDSubCommand::Swap(pos1, pos2))
     } else if name.as_ref() == b"tagtypes" {
         if args.is_empty() {
             MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::List))
