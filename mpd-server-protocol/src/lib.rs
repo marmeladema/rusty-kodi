@@ -764,7 +764,6 @@ impl FromBytes for usize {
             if *first == b'"' {
                 parse_integer(b'"', rest)
             } else {
-                println!("parsing integer from {:?}", bytes);
                 parse_integer(b' ', bytes)
             }
         } else {
@@ -953,11 +952,12 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         };
         MPDCommand::Sub(MPDSubCommand::PlaylistId(id))
     } else if name.as_ref() == b"playlistinfo" {
-        let range = if !args.is_empty() {
-            let arg = BString::from_bytes(args).unwrap().0;
-            Some(RangeInclusive::from_bytes(arg.as_slice()).unwrap().0)
-        } else {
+        let range = if args.is_empty() {
             None
+        } else {
+            let (arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            Some(RangeInclusive::from_bytes(arg.as_slice()).unwrap().0)
         };
         MPDCommand::Sub(MPDSubCommand::PlaylistInfo(range))
     } else if name.as_ref() == b"plchanges" {
