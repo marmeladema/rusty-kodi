@@ -286,6 +286,10 @@ enum MPDSubCommand {
         version: usize,
         range: Option<RangeInclusive<usize>>,
     },
+    PlaylistChangesPosId {
+        version: usize,
+        range: Option<RangeInclusive<usize>>,
+    },
     PlaylistId(Option<BString>),
     PlaylistInfo(Option<RangeInclusive<usize>>),
     Previous,
@@ -320,6 +324,7 @@ impl MPDSubCommand {
             Self::Play(_) => b"play",
             Self::PlayId(_) => b"playid",
             Self::PlaylistChanges { .. } => b"plchanges",
+            Self::PlaylistChangesPosId { .. } => b"plchangesposid",
             Self::PlaylistId(_) => b"playlistid",
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
@@ -520,6 +525,7 @@ impl MPDSubCommand {
                 stream.write_all(b"playlistid\n").await?;
                 stream.write_all(b"playlistinfo\n").await?;
                 stream.write_all(b"plchanges\n").await?;
+                stream.write_all(b"plchangesposid\n").await?;
                 stream.write_all(b"setvol\n").await?;
                 stream.write_all(b"status\n").await?;
                 stream.write_all(b"stats\n").await?;
@@ -582,6 +588,9 @@ impl MPDSubCommand {
                 Ok(Ok(()))
             }
             Self::PlaylistChanges { range, .. } => {
+                playlistinfo(stream, handler, range.as_ref().cloned(), buf).await
+            }
+            Self::PlaylistChangesPosId { range, .. } => {
                 playlistinfo(stream, handler, range.as_ref().cloned(), buf).await
             }
             Self::PlaylistId(id) => playlistid(stream, handler, id.as_ref(), buf).await,
@@ -974,6 +983,16 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             Some(RangeInclusive::from_bytes(arg.as_slice()).unwrap().0)
         };
         MPDCommand::Sub(MPDSubCommand::PlaylistChanges { version, range })
+    } else if name.as_ref() == b"plchangesposid" {
+        let (version, rest) = next_arg!(name, args, usize);
+        args = rest;
+        let range = if args.is_empty() {
+            None
+        } else {
+            let arg = BString::from_bytes(args).unwrap().0;
+            Some(RangeInclusive::from_bytes(arg.as_slice()).unwrap().0)
+        };
+        MPDCommand::Sub(MPDSubCommand::PlaylistChangesPosId { version, range })
     } else if name.as_ref() == b"previous" {
         MPDCommand::Sub(MPDSubCommand::Previous)
     } else if name.as_ref() == b"setvol" {
