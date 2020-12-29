@@ -197,10 +197,12 @@ define_method!(
 // Player methods
 
 define_method!(
+    #[doc="Returns all active players"]
     Player.GetActivePlayers {} -> Vec<crate::types::player::ActivePlayer>
 );
 
 define_method!(
+    #[doc="Retrieves the currently played item"]
     Player.GetItem {
         #[serde(rename = "playerid")]
         id: u8,
@@ -223,7 +225,10 @@ pub enum PlayerGetItemResponse {
     Item(crate::types::list::item::All),
 }
 
+// Player.GetPlayers
+
 define_method!(
+    #[doc="Retrieves the values of the given properties"]
     Player.GetProperties {
         #[serde(rename = "playerid")]
         id: u8,
@@ -240,20 +245,50 @@ impl PlayerGetProperties {
     }
 }
 
+// Player.GetViewMode
+
 define_method!(
-    Player.Stop {
+    #[doc="Go to previous/next/specific item in the playlist"]
+    Player.GoTo {
         #[serde(rename = "playerid")]
-        id: u8
+        id: u8,
+        to: crate::types::player::GoTo
     } -> String
 );
 
-impl PlayerStop {
-    pub fn new(id: u8) -> Self {
-        Self { id }
-    }
+// Player.Move
+
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+pub enum PlayerOpenItem {
+    PlaylistAt {
+        #[serde(rename = "playlistid")]
+        id: usize,
+        position: usize,
+    },
+    // TODO: support other open mode
+}
+
+#[derive(Debug, Default, serde::Serialize)]
+pub struct PlayerOpenOptions {
+    #[serde(rename = "playername")]
+    name: Option<String>,
+    repeat: Option<bool>,
+    // TODO: support other resume mode
+    resume: bool,
+    shuffled: Option<bool>,
 }
 
 define_method!(
+    #[doc="Start playback of either the playlist with the given ID, a slideshow with the pictures from the given directory or a single file or an item from the database."]
+    Player.Open {
+        item: PlayerOpenItem,
+        options: PlayerOpenOptions
+    } -> String
+);
+
+define_method!(
+    #[doc="Pauses or unpause playback and returns the new state"]
     Player.PlayPause {
         #[serde(rename = "playerid")]
         id: u8,
@@ -270,13 +305,40 @@ impl PlayerPlayPause {
     }
 }
 
+// Player.Rotate
+
+// Player.Seek
+
+// Player.SetAudioStream
+
+// Player.SetPartymode
+
+// Player.SetRepeat
+
+// Player.SetShuffle
+
+// Player.SetSpeed
+
+// Player.SetSubtitle
+
+// Player.SetVideoStream
+
+// Player.SetViewMode
+
 define_method!(
-    Player.GoTo {
+    Player.Stop {
         #[serde(rename = "playerid")]
-        id: u8,
-        to: crate::types::player::GoTo
+        id: u8
     } -> String
 );
+
+impl PlayerStop {
+    pub fn new(id: u8) -> Self {
+        Self { id }
+    }
+}
+
+// Player.Zoom
 
 // Playlist methods
 

@@ -438,6 +438,12 @@ pub mod list {
             Directory,
         }
 
+        impl Default for FileType {
+            fn default() -> Self {
+                Self::File
+            }
+        }
+
         #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
         pub struct File {
             pub label: String,
@@ -534,6 +540,7 @@ pub mod list {
             pub uniqueid: Option<String>,
             pub watchedepisodes: Option<usize>,
             pub writer: Option<Vec<String>>,
+            #[serde(default)]
             pub filetype: FileType,
             pub lastmodified: Option<String>,
             pub mimetype: Option<String>,
@@ -715,10 +722,10 @@ pub mod player {
                 Empty(EmptyStream),
             }
 
-            let opt_stream = OptionStream::deserialize(deserializer)?;
+            let opt_stream = Option::<OptionStream>::deserialize(deserializer)?;
             Ok(match opt_stream {
-                OptionStream::Empty(_) => None,
-                OptionStream::Stream(stream) => Some(stream),
+                Some(OptionStream::Empty(_)) | None => None,
+                Some(OptionStream::Stream(stream)) => Some(stream),
             })
         }
 
@@ -743,6 +750,7 @@ pub mod player {
             pub partymode: Option<bool>,
             // percentage: Option<f32>,
             pub playlistid: Option<u8>,
+            #[serde(default, deserialize_with = "crate::deserialize_opt_usize")]
             pub position: Option<usize>,
             pub repeat: Option<crate::types::player::Repeat>,
             pub shuffled: Option<bool>,

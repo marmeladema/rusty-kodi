@@ -222,6 +222,13 @@ pub trait CommandHandler {
     async fn queue_get(&mut self, id: &BStr) -> Option<QueueEntry>;
 
     /// Adds a song to the queue and return it's id.
+    async fn queue_add_file(
+        &mut self,
+        path: &Url,
+        pos: Option<usize>,
+    ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Adds a song to the queue and return it's id.
     async fn queue_add(
         &mut self,
         path: &Url,
@@ -230,6 +237,7 @@ pub trait CommandHandler {
 
     async fn previous(&mut self);
     async fn play(&mut self, pos: usize);
+    async fn playid(&mut self, id: usize);
     async fn next(&mut self);
     async fn stop(&mut self);
     async fn pause(&mut self, pause: Option<bool>);
@@ -270,6 +278,11 @@ enum MPDSubCommand {
     Outputs,
     Pause(Option<bool>),
     Play(usize),
+    PlayId(usize),
+    PlaylistChanges {
+        version: usize,
+        range: Option<RangeInclusive<usize>>,
+    },
     PlaylistId(Option<BString>),
     PlaylistInfo(Option<RangeInclusive<usize>>),
     Previous,
@@ -301,6 +314,8 @@ impl MPDSubCommand {
             Self::Outputs => b"outputs",
             Self::Pause(_) => b"pause",
             Self::Play(_) => b"play",
+            Self::PlayId(_) => b"playid",
+            Self::PlaylistChanges { .. } => b"plchanges",
             Self::PlaylistId(_) => b"playlistid",
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
@@ -454,18 +469,16 @@ async fn addid(
     position: Option<usize>,
     buf: &mut Vec<u8>,
 ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
-    let id = match handler.queue_add(url, position).await {
+    let id = match handler.queue_add_file(url, position).await {
         Ok(id) => id,
         Err(err) => return Ok(Err(CommandError::NoExist(err.to_string()))),
     };
-    if let Some(id) = id {
-        buf.clear();
-        let mut cursor = Cursor::new(&mut *buf);
-        let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-        write!(writer, "Id: {}\n", id).unwrap();
-        let data = &cursor.get_ref()[..(cursor.position() as usize)];
-        stream.write_all(data).await?;
-    }
+    buf.clear();
+    let mut cursor = Cursor::new(&mut *buf);
+    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+    write!(writer, "Id: {}\n", id).unwrap();
+    let data = &cursor.get_ref()[..(cursor.position() as usize)];
+    stream.write_all(data).await?;
     Ok(Ok(()))
 }
 
@@ -493,8 +506,11 @@ impl MPDSubCommand {
                 stream.write_all(b"notcommands\n").await?;
                 stream.write_all(b"outputs\n").await?;
                 stream.write_all(b"pause\n").await?;
+                stream.write_all(b"play\n").await?;
+                stream.write_all(b"playid\n").await?;
                 stream.write_all(b"playlistid\n").await?;
                 stream.write_all(b"playlistinfo\n").await?;
+                stream.write_all(b"plchanges\n").await?;
                 stream.write_all(b"setvol\n").await?;
                 stream.write_all(b"status\n").await?;
                 stream.write_all(b"stats\n").await?;
@@ -551,6 +567,13 @@ impl MPDSubCommand {
             Self::Play(pos) => {
                 handler.play(*pos).await;
                 Ok(Ok(()))
+            }
+            Self::PlayId(songid) => {
+                handler.playid(*songid).await;
+                Ok(Ok(()))
+            }
+            Self::PlaylistChanges { range, .. } => {
+                playlistinfo(stream, handler, range.as_ref().cloned(), buf).await
             }
             Self::PlaylistId(id) => playlistid(stream, handler, id.as_ref(), buf).await,
             Self::PlaylistInfo(range) => {
@@ -907,6 +930,10 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         let (pos, rest) = next_arg!(name, args, usize);
         args = rest;
         MPDCommand::Sub(MPDSubCommand::Play(pos))
+    } else if name.as_ref() == b"playid" {
+        let (songid, rest) = next_arg!(name, args, usize);
+        args = rest;
+        MPDCommand::Sub(MPDSubCommand::PlayId(songid))
     } else if name.as_ref() == b"playlistid" {
         let id = if !args.is_empty() {
             Some(BString::from_bytes(args).unwrap().0)
@@ -922,6 +949,16 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             None
         };
         MPDCommand::Sub(MPDSubCommand::PlaylistInfo(range))
+    } else if name.as_ref() == b"plchanges" {
+        let (version, rest) = next_arg!(name, args, usize);
+        args = rest;
+        let range = if args.is_empty() {
+            None
+        } else {
+            let arg = BString::from_bytes(args).unwrap().0;
+            Some(RangeInclusive::from_bytes(arg.as_slice()).unwrap().0)
+        };
+        MPDCommand::Sub(MPDSubCommand::PlaylistChanges { version, range })
     } else if name.as_ref() == b"previous" {
         MPDCommand::Sub(MPDSubCommand::Previous)
     } else if name.as_ref() == b"setvol" {

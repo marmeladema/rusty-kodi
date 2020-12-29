@@ -18,15 +18,19 @@ use tokio::net::TcpListener;
 
 struct KodiProxyCommandHandler {
     kodi_client: KodiClient,
+    queue_version_next_id: u32,
 }
 
 impl KodiProxyCommandHandler {
     fn new(kodi_client: KodiClient) -> Self {
-        Self { kodi_client }
+        Self {
+            kodi_client,
+            queue_version_next_id: 1,
+        }
     }
 
     async fn active_player(&self) -> Option<u8> {
-        for player in self
+        /*for player in self
             .kodi_client
             .send_method(PlayerGetActivePlayers {})
             .await
@@ -36,7 +40,8 @@ impl KodiProxyCommandHandler {
                 return Some(player.id);
             }
         }
-        None
+        None*/
+        Some(0)
     }
 
     async fn path_remap(&self, path: &Path) -> Option<PathBuf> {
@@ -55,6 +60,13 @@ impl KodiProxyCommandHandler {
             }
         }
         None
+    }
+
+    #[inline]
+    fn queue_version(&mut self) -> u32 {
+        let id = self.queue_version_next_id;
+        self.queue_version_next_id += 1;
+        id
     }
 }
 
@@ -110,7 +122,7 @@ impl CommandHandler for KodiProxyCommandHandler {
             status.songid = item.id;
             status.elapsed = player_props.time.map(Duration::from);
             status.duration = player_props.totaltime.map(Duration::from);
-            status.playlist = Some(playlist_id.into());
+            status.playlist = Some(self.queue_version());
             status.playlistlength = playlist_props.size;
         }
         status
@@ -252,6 +264,54 @@ impl CommandHandler for KodiProxyCommandHandler {
         None
     }
 
+    async fn queue_add_file(
+        &mut self,
+        url: &Url,
+        position: Option<usize>,
+    ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        use kodi_jsonrpc_client::types::playlist::*;
+
+        let playlist_id = 2;
+
+        let path = url.to_file_path().unwrap();
+        let path = self
+            .path_remap(path.strip_prefix("/").unwrap())
+            .await
+            .unwrap();
+
+        let FilesGetFileDetailsResponse::FileDetails(details) = self
+            .kodi_client
+            .send_method(FilesGetFileDetails::all_properties(
+                path.to_str().unwrap().to_owned(),
+                kodi_jsonrpc_client::types::files::Media::Music,
+            ))
+            .await?;
+
+        let item = Item::File {
+            path: path.to_str().unwrap().to_owned(),
+        };
+
+        if let Some(position) = position {
+            self.kodi_client
+                .send_method(PlaylistInsert {
+                    id: playlist_id,
+                    position,
+                    item: vec![item],
+                })
+                .await
+                .unwrap();
+        } else {
+            self.kodi_client
+                .send_method(PlaylistAdd {
+                    id: playlist_id,
+                    item: vec![item],
+                })
+                .await
+                .unwrap();
+        }
+        Ok(details.id.unwrap())
+    }
+
     async fn queue_add(
         &mut self,
         url: &Url,
@@ -263,6 +323,10 @@ impl CommandHandler for KodiProxyCommandHandler {
         let playlist_id = 2;
 
         let path = url.to_file_path().unwrap();
+        let path = self
+            .path_remap(path.strip_prefix("/").unwrap())
+            .await
+            .unwrap();
 
         let FilesGetFileDetailsResponse::FileDetails(details) = self
             .kodi_client
@@ -278,7 +342,7 @@ impl CommandHandler for KodiProxyCommandHandler {
             },
             KodiFileType::Directory => Item::Directory {
                 path: path.to_str().unwrap().to_owned(),
-                media: kodi_jsonrpc_client::types::files::Media::Files,
+                media: kodi_jsonrpc_client::types::files::Media::Music,
                 recursive: true,
             },
         };
@@ -329,6 +393,41 @@ impl CommandHandler for KodiProxyCommandHandler {
                 })
                 .await
                 .unwrap();
+        }
+    }
+
+    async fn playid(&mut self, id: usize) {
+        use kodi_jsonrpc_client::types::global::Toggle;
+        use kodi_jsonrpc_client::types::player::*;
+
+        let player_id = 0;
+        let playlist_id = 0;
+        let response = self
+            .kodi_client
+            .send_method(PlaylistGetItems::all_properties(playlist_id))
+            .await
+            .unwrap();
+        for (pos, item) in response.items.iter().enumerate().rev() {
+            if item.id == Some(id) {
+                self.kodi_client
+                    .send_method(PlayerGoTo {
+                        id: player_id,
+                        to: GoTo::Absolute(pos),
+                    })
+                    .await
+                    .unwrap();
+                self.kodi_client
+                    .send_method(PlayerOpen {
+                        item: PlayerOpenItem::PlaylistAt {
+                            id: playlist_id as usize,
+                            position: pos,
+                        },
+                        options: Default::default(),
+                    })
+                    .await
+                    .unwrap();
+                break;
+            }
         }
     }
 
