@@ -926,14 +926,16 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
     } else if name.as_ref() == b"outputs" {
         MPDCommand::Sub(MPDSubCommand::Outputs)
     } else if name.as_ref() == b"pause" {
-        let pause = if !args.is_empty() {
-            Some(match BString::from_bytes(args).unwrap().0.as_slice() {
+        let pause = if args.is_empty() {
+            None
+        } else {
+            let (arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            Some(match arg.as_slice() {
                 b"0" => false,
                 b"1" => true,
                 s => panic!("Invalid pause value: {:?}", s),
             })
-        } else {
-            None
         };
         MPDCommand::Sub(MPDSubCommand::Pause(pause))
     } else if name.as_ref() == b"play" {
