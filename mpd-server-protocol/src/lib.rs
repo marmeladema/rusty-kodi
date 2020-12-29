@@ -945,10 +945,12 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         args = rest;
         MPDCommand::Sub(MPDSubCommand::PlayId(songid))
     } else if name.as_ref() == b"playlistid" {
-        let id = if !args.is_empty() {
-            Some(BString::from_bytes(args).unwrap().0)
-        } else {
+        let id = if args.is_empty() {
             None
+        } else {
+            let (arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            Some(arg)
         };
         MPDCommand::Sub(MPDSubCommand::PlaylistId(id))
     } else if name.as_ref() == b"playlistinfo" {
