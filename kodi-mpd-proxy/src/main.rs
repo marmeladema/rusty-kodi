@@ -368,6 +368,13 @@ impl CommandHandler for KodiProxyCommandHandler {
         Ok(None)
     }
 
+    async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.kodi_client
+            .send_method(PlaylistClear { id: 0 })
+            .await?;
+        Ok(())
+    }
+
     async fn previous(&mut self) {
         use kodi_jsonrpc_client::types::player::*;
 
@@ -397,7 +404,6 @@ impl CommandHandler for KodiProxyCommandHandler {
     }
 
     async fn playid(&mut self, id: usize) {
-        use kodi_jsonrpc_client::types::global::Toggle;
         use kodi_jsonrpc_client::types::player::*;
 
         let player_id = 0;

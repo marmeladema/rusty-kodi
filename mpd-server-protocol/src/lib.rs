@@ -235,6 +235,8 @@ pub trait CommandHandler {
         pos: Option<usize>,
     ) -> Result<Option<usize>, Box<dyn std::error::Error + Send + Sync>>;
 
+    async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
     async fn previous(&mut self);
     async fn play(&mut self, pos: usize);
     async fn playid(&mut self, id: usize);
@@ -259,6 +261,7 @@ enum TagTypes {
 enum MPDSubCommand {
     Add(Url),
     AddId(Url, Option<usize>),
+    Clear,
     Commands,
     CurrentSong,
     Decoders,
@@ -299,6 +302,7 @@ impl MPDSubCommand {
         <&BStr>::from(match self {
             Self::Add(_) => &b"add"[..],
             Self::AddId(..) => b"addid",
+            Self::Clear => b"clear",
             Self::Commands => b"commands",
             Self::CurrentSong => b"currentsong",
             Self::Decoders => b"decoders",
@@ -493,9 +497,14 @@ impl MPDSubCommand {
         match self {
             Self::Add(url) => add(stream, handler, url, buf).await,
             Self::AddId(url, pos) => addid(stream, handler, url, pos.as_ref().copied(), buf).await,
+            Self::Clear => {
+                handler.queue_clear().await?;
+                Ok(Ok(()))
+            }
             Self::Commands => {
                 stream.write_all(b"add\n").await?;
                 stream.write_all(b"addid\n").await?;
+                stream.write_all(b"clear\n").await?;
                 stream.write_all(b"commands\n").await?;
                 stream.write_all(b"currentsong\n").await?;
                 stream.write_all(b"decoders\n").await?;
@@ -858,6 +867,8 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                 })
             }
         }
+    } else if name.as_ref() == b"clear" {
+        MPDCommand::Sub(MPDSubCommand::Clear)
     } else if name.as_ref() == b"command_list_begin" {
         MPDCommand::ListBegin {
             ok: false,
