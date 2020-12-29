@@ -11,12 +11,46 @@ fn deserialize_opt_usize<'de, D>(deserializer: D) -> Result<Option<usize>, D::Er
 where
     D: serde::de::Deserializer<'de>,
 {
-    let value = isize::deserialize(deserializer)?;
-    Ok(if value < 0 {
-        None
-    } else {
-        Some(value as usize)
-    })
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Isize(isize),
+        Usize(usize),
+    }
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Isize(val) => {
+            if val < 0 {
+                Ok(None)
+            } else {
+                Ok(Some(val as usize))
+            }
+        }
+        Value::Usize(val) => Ok(Some(val)),
+    }
+}
+
+fn deserialize_opt_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Value {
+        Isize(isize),
+        Bool(bool),
+    }
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Isize(val) => {
+            if val < 0 {
+                Ok(None)
+            } else {
+                Ok(Some(val != 0))
+            }
+        }
+        Value::Bool(val) => Ok(Some(val)),
+    }
 }
 
 #[derive(Debug)]

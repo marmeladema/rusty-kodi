@@ -729,7 +729,7 @@ pub mod player {
             })
         }
 
-        #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+        #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
         pub struct Value {
             pub audiostreams: Option<Vec<crate::types::player::audio::Stream>>,
             pub canchangespeed: Option<bool>,
@@ -753,6 +753,7 @@ pub mod player {
             #[serde(default, deserialize_with = "crate::deserialize_opt_usize")]
             pub position: Option<usize>,
             pub repeat: Option<crate::types::player::Repeat>,
+            #[serde(default, deserialize_with = "crate::deserialize_opt_bool")]
             pub shuffled: Option<bool>,
             pub speed: Option<i64>,
             pub subtitleenabled: Option<bool>,
