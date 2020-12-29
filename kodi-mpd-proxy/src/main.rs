@@ -23,7 +23,6 @@ mod player;
 struct KodiProxyCommandHandler {
     kodi_client: KodiClient,
     player: Arc<player::KodiPlayer>,
-    queue_version_next_id: u32,
 }
 
 impl KodiProxyCommandHandler {
@@ -31,7 +30,6 @@ impl KodiProxyCommandHandler {
         Self {
             kodi_client,
             player,
-            queue_version_next_id: 1,
         }
     }
 
@@ -51,13 +49,6 @@ impl KodiProxyCommandHandler {
             }
         }
         None
-    }
-
-    #[inline]
-    fn queue_version(&mut self) -> u32 {
-        let id = self.queue_version_next_id;
-        self.queue_version_next_id += 1;
-        id
     }
 }
 
@@ -111,7 +102,7 @@ impl CommandHandler for KodiProxyCommandHandler {
         status.songid = item.id;
         status.elapsed = self.player.time();
         status.duration = self.player.totaltime();
-        status.playlist = Some(self.queue_version());
+        status.playlist = Some(self.player.playlist_version());
         status
     }
 
@@ -209,29 +200,28 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn queue_list(&mut self, range: Option<RangeInclusive<usize>>) -> Vec<QueueEntry> {
         let mut items = Vec::new();
-        if let Some(playlist_id) = self.player.playlist() {
-            let mut method = PlaylistGetItems::all_properties(playlist_id);
-            method.limits = range.map(|range| range.into());
-            let response = self.kodi_client.send_method(method).await.unwrap();
-            let limits = response.limits;
-            items.extend(
-                response
-                    .items
-                    .into_iter()
-                    .enumerate()
-                    .map(|(idx, item)| QueueEntry {
-                        path: PathBuf::from(&item.file.unwrap()),
-                        file: File {
-                            artist: item.artist,
-                            album: item.album,
-                            title: item.title,
-                            ..Default::default()
-                        },
-                        position: idx + limits.start,
-                        id: usize_to_bstring(item.id.unwrap()),
-                    }),
-            );
-        }
+        let playlist_items = self.player.playlist_items();
+        let (start, range) = if let Some(range) = range {
+            (*range.start(), range)
+        } else {
+            (0, 0..=(playlist_items.len() - 1))
+        };
+        items.extend(
+            self.player.playlist_items()[range]
+                .iter()
+                .enumerate()
+                .map(|(idx, item)| QueueEntry {
+                    path: PathBuf::from(item.file.as_ref().unwrap()),
+                    file: File {
+                        artist: item.artist.clone(),
+                        album: item.album.as_ref().map(String::from),
+                        title: item.title.as_ref().map(String::from),
+                        ..Default::default()
+                    },
+                    position: idx + start,
+                    id: usize_to_bstring(item.id.unwrap()),
+                }),
+        );
         items
     }
 
@@ -393,23 +383,18 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn playid(&mut self, id: usize) {
         use kodi_jsonrpc_client::types::player::*;
-
         let player_id = self.player.id();
-        if let Some(playlist_id) = self.player.playlist() {
-            let response = self
-                .kodi_client
-                .send_method(PlaylistGetItems::all_properties(playlist_id))
-                .await
-                .unwrap();
-            for (pos, item) in response.items.iter().enumerate().rev() {
-                if item.id == Some(id) {
-                    self.kodi_client
-                        .send_method(PlayerGoTo {
-                            id: player_id,
-                            to: GoTo::Absolute(pos),
-                        })
-                        .await
-                        .unwrap();
+        let playlist_id = self.player.playlist();
+        for (pos, item) in self.player.playlist_items().iter().enumerate().rev() {
+            if item.id == Some(id) {
+                self.kodi_client
+                    .send_method(PlayerGoTo {
+                        id: player_id,
+                        to: GoTo::Absolute(pos),
+                    })
+                    .await
+                    .unwrap();
+                if let Some(playlist_id) = playlist_id {
                     self.kodi_client
                         .send_method(PlayerOpen {
                             item: PlayerOpenItem::PlaylistAt {
@@ -420,8 +405,8 @@ impl CommandHandler for KodiProxyCommandHandler {
                         })
                         .await
                         .unwrap();
-                    break;
                 }
+                break;
             }
         }
     }
