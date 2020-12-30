@@ -549,6 +549,120 @@ async fn addid(
     Ok(Ok(()))
 }
 
+async fn commands(
+    stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
+    buf: &mut Vec<u8>,
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut cursor = Cursor::new(&mut *buf);
+    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+    writeln!(writer, "command: add")?;
+    writeln!(writer, "command: addid")?;
+    writeln!(writer, "command: addtagid")?;
+    writeln!(writer, "command: albumart")?;
+    writeln!(writer, "command: channels")?;
+    writeln!(writer, "command: clear")?;
+    writeln!(writer, "command: clearerror")?;
+    writeln!(writer, "command: cleartagid")?;
+    writeln!(writer, "command: close")?;
+    writeln!(writer, "command: commands")?;
+    writeln!(writer, "command: config")?;
+    writeln!(writer, "command: consume")?;
+    writeln!(writer, "command: count")?;
+    writeln!(writer, "command: crossfade")?;
+    writeln!(writer, "command: currentsong")?;
+    writeln!(writer, "command: decoders")?;
+    writeln!(writer, "command: delete")?;
+    writeln!(writer, "command: deleteid")?;
+    writeln!(writer, "command: delpartition")?;
+    writeln!(writer, "command: disableoutput")?;
+    writeln!(writer, "command: enableoutput")?;
+    writeln!(writer, "command: find")?;
+    writeln!(writer, "command: findadd")?;
+    writeln!(writer, "command: getvol")?;
+    writeln!(writer, "command: idle")?;
+    writeln!(writer, "command: kill")?;
+    writeln!(writer, "command: list")?;
+    writeln!(writer, "command: listall")?;
+    writeln!(writer, "command: listallinfo")?;
+    writeln!(writer, "command: listfiles")?;
+    writeln!(writer, "command: listmounts")?;
+    writeln!(writer, "command: listpartitions")?;
+    writeln!(writer, "command: listplaylist")?;
+    writeln!(writer, "command: listplaylistinfo")?;
+    writeln!(writer, "command: listplaylists")?;
+    writeln!(writer, "command: load")?;
+    writeln!(writer, "command: lsinfo")?;
+    writeln!(writer, "command: mixrampdb")?;
+    writeln!(writer, "command: mixrampdelay")?;
+    writeln!(writer, "command: mount")?;
+    writeln!(writer, "command: move")?;
+    writeln!(writer, "command: moveid")?;
+    writeln!(writer, "command: moveoutput")?;
+    writeln!(writer, "command: newpartition")?;
+    writeln!(writer, "command: next")?;
+    writeln!(writer, "command: notcommands")?;
+    writeln!(writer, "command: outputs")?;
+    writeln!(writer, "command: outputset")?;
+    writeln!(writer, "command: partition")?;
+    writeln!(writer, "command: password")?;
+    writeln!(writer, "command: pause")?;
+    writeln!(writer, "command: ping")?;
+    writeln!(writer, "command: play")?;
+    writeln!(writer, "command: playid")?;
+    writeln!(writer, "command: playlist")?;
+    writeln!(writer, "command: playlistadd")?;
+    writeln!(writer, "command: playlistclear")?;
+    writeln!(writer, "command: playlistdelete")?;
+    writeln!(writer, "command: playlistfind")?;
+    writeln!(writer, "command: playlistid")?;
+    writeln!(writer, "command: playlistinfo")?;
+    writeln!(writer, "command: playlistmove")?;
+    writeln!(writer, "command: playlistsearch")?;
+    writeln!(writer, "command: plchanges")?;
+    writeln!(writer, "command: plchangesposid")?;
+    writeln!(writer, "command: previous")?;
+    writeln!(writer, "command: prio")?;
+    writeln!(writer, "command: prioid")?;
+    writeln!(writer, "command: random")?;
+    writeln!(writer, "command: rangeid")?;
+    writeln!(writer, "command: readcomments")?;
+    writeln!(writer, "command: readmessages")?;
+    writeln!(writer, "command: readpicture")?;
+    writeln!(writer, "command: rename")?;
+    writeln!(writer, "command: repeat")?;
+    writeln!(writer, "command: replay_gain_mode")?;
+    writeln!(writer, "command: replay_gain_status")?;
+    writeln!(writer, "command: rescan")?;
+    writeln!(writer, "command: rm")?;
+    writeln!(writer, "command: save")?;
+    writeln!(writer, "command: search")?;
+    writeln!(writer, "command: searchadd")?;
+    writeln!(writer, "command: searchaddpl")?;
+    writeln!(writer, "command: seek")?;
+    writeln!(writer, "command: seekcur")?;
+    writeln!(writer, "command: seekid")?;
+    writeln!(writer, "command: sendmessage")?;
+    writeln!(writer, "command: setvol")?;
+    writeln!(writer, "command: shuffle")?;
+    writeln!(writer, "command: single")?;
+    writeln!(writer, "command: stats")?;
+    writeln!(writer, "command: status")?;
+    writeln!(writer, "command: stop")?;
+    writeln!(writer, "command: subscribe")?;
+    writeln!(writer, "command: swap")?;
+    writeln!(writer, "command: swapid")?;
+    writeln!(writer, "command: tagtypes")?;
+    writeln!(writer, "command: toggleoutput")?;
+    writeln!(writer, "command: unmount")?;
+    writeln!(writer, "command: unsubscribe")?;
+    writeln!(writer, "command: update")?;
+    writeln!(writer, "command: urlhandlers")?;
+    writeln!(writer, "command: volume")?;
+    let data = &cursor.get_ref()[..(cursor.position() as usize)];
+    stream.write_all(data).await?;
+    Ok(Ok(()))
+}
+
 impl MPDSubCommand {
     async fn process(
         &self,
@@ -564,43 +678,7 @@ impl MPDSubCommand {
                 handler.queue_clear().await?;
                 Ok(Ok(()))
             }
-            Self::Commands => {
-                stream.write_all(b"add\n").await?;
-                stream.write_all(b"addid\n").await?;
-                stream.write_all(b"clear\n").await?;
-                stream.write_all(b"commands\n").await?;
-                stream.write_all(b"currentsong\n").await?;
-                stream.write_all(b"decoders\n").await?;
-                stream.write_all(b"delete\n").await?;
-                stream.write_all(b"getvol\n").await?;
-                stream.write_all(b"idle\n").await?;
-                stream.write_all(b"listplaylist\n").await?;
-                stream.write_all(b"listplaylistinfo\n").await?;
-                stream.write_all(b"lsinfo\n").await?;
-                stream.write_all(b"next\n").await?;
-                stream.write_all(b"notcommands\n").await?;
-                stream.write_all(b"outputs\n").await?;
-                stream.write_all(b"pause\n").await?;
-                stream.write_all(b"play\n").await?;
-                stream.write_all(b"playid\n").await?;
-                stream.write_all(b"playlistid\n").await?;
-                stream.write_all(b"playlistinfo\n").await?;
-                stream.write_all(b"plchanges\n").await?;
-                stream.write_all(b"plchangesposid\n").await?;
-                stream.write_all(b"random\n").await?;
-                stream.write_all(b"rescan\n").await?;
-                stream.write_all(b"seek\n").await?;
-                stream.write_all(b"seekcur\n").await?;
-                stream.write_all(b"setvol\n").await?;
-                stream.write_all(b"status\n").await?;
-                stream.write_all(b"stats\n").await?;
-                stream.write_all(b"stop\n").await?;
-                stream.write_all(b"swap\n").await?;
-                stream.write_all(b"tagtypes\n").await?;
-                stream.write_all(b"update\n").await?;
-                stream.write_all(b"urlhandlers\n").await?;
-                Ok(Ok(()))
-            }
+            Self::Commands => commands(stream, buf).await,
             Self::CurrentSong => currentsong(stream, handler, buf).await,
             Self::Decoders => Ok(Ok(())),
             Self::Delete(range) => {
