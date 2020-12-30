@@ -359,12 +359,25 @@ pub struct PlayerSeekResponse {
 
 // Player.SetAudioStream
 
-// Player.SetPartymode
+define_method!(
+    #[doc="Turn partymode on or off"]
+    Player.SetPartymode {
+        #[serde(rename = "playerid")]
+        id: u8,
+        partymode: crate::types::global::Toggle
+    } -> String
+);
 
 // Player.SetRepeat
 
-// Player.SetShuffle
-
+define_method!(
+    #[doc="Shuffle/Unshuffle items in the player"]
+    Player.SetShuffle {
+        #[serde(rename = "playerid")]
+        id: u8,
+        shuffle: crate::types::global::Toggle
+    } -> String
+);
 // Player.SetSpeed
 
 // Player.SetSubtitle
