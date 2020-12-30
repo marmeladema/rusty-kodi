@@ -378,7 +378,41 @@ define_method!(
         shuffle: crate::types::global::Toggle
     } -> String
 );
-// Player.SetSpeed
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, serde_repr::Serialize_repr, serde_repr::Deserialize_repr,
+)]
+#[repr(i8)]
+pub enum PlayerSpeedValue {
+    Backward32 = -32,
+    Backward16 = -16,
+    Backward8 = -8,
+    Backward4 = -4,
+    Backward2 = -2,
+    Paused = 0,
+    Normal = 1,
+    Forward2 = 2,
+    Forward4 = 4,
+    Forward8 = 8,
+    Forward16 = 16,
+    Forward32 = 32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+#[serde(untagged)]
+pub enum PlayerSpeed {
+    Value(PlayerSpeedValue),
+    IncDec(crate::types::global::IncrementDecrement),
+}
+
+define_method!(
+    #[doc="Set the speed of the current playback"]
+    Player.SetSpeed {
+        #[serde(rename = "playerid")]
+        id: u8,
+        speed: PlayerSpeed
+    } -> crate::types::player::Speed
+);
 
 // Player.SetSubtitle
 

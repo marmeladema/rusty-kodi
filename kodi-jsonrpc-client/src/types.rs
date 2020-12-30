@@ -73,6 +73,13 @@ pub mod global {
     use std::time::Duration;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum IncrementDecrement {
+        Increment,
+        Decrement,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
     pub struct Time {
         pub hours: u64,
         pub minutes: u8,
