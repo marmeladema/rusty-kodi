@@ -368,7 +368,15 @@ define_method!(
     } -> String
 );
 
-// Player.SetRepeat
+define_method!(
+    #[doc="Set the repeat mode of the player"]
+    Player.SetRepeat {
+        #[serde(rename = "playerid")]
+        id: u8,
+        // TODO: handle `cycle` mode
+        repeat: crate::types::player::Repeat
+    } -> String
+);
 
 define_method!(
     #[doc="Shuffle/Unshuffle items in the player"]

@@ -777,7 +777,8 @@ pub mod player {
             pub playlistid: Option<u8>,
             #[serde(default, deserialize_with = "crate::deserialize_opt_usize")]
             pub position: Option<usize>,
-            pub repeat: Option<crate::types::player::Repeat>,
+            #[serde(default)]
+            pub repeat: crate::types::player::Repeat,
             #[serde(default, deserialize_with = "crate::deserialize_opt_bool")]
             pub shuffled: Option<bool>,
             pub speed: Option<i64>,
