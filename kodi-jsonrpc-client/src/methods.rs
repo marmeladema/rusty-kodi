@@ -33,16 +33,19 @@ impl ApplicationGetProperties {
 }
 
 define_method!(
+    #[doc="Quit application"]
     Application.Quit {} -> String
 );
 
 define_method!(
+    #[doc="Toggle mute/unmute"]
     Application.SetMute {
         mute: crate::types::global::Toggle
     } -> bool
 );
 
 define_method!(
+    #[doc="Set the current volume"]
     Application.SetVolume {
         volume: usize
     } -> usize
@@ -51,6 +54,7 @@ define_method!(
 // Audio Library methods
 
 define_method!(
+    #[doc="Cleans the audio library from non-existent items"]
     AudioLibrary.Clean {
         showdialogs: bool
     } -> String
@@ -85,6 +89,7 @@ define_method!(
 // AudioLibrary.GetSongs
 
 define_method!(
+    #[doc="Get all music sources, including unique ID"]
     #[derive(Default)]
     AudioLibrary.GetSources {
         #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
@@ -122,6 +127,7 @@ define_method!(
 // Files methods
 
 define_method!(
+    #[doc="Get the directories and files in the given directory"]
     #[derive(Default)]
     Files.GetDirectory {
         directory: String,
@@ -155,6 +161,7 @@ pub struct FilesGetDirectoryResponse {
 }
 
 define_method!(
+    #[doc="Get details for a specific file"]
     #[derive(Default)]
     Files.GetFileDetails {
         file: String,
@@ -199,6 +206,7 @@ pub enum JSONRPCVersionResponse {
 }
 
 define_method!(
+    #[doc="Retrieve the JSON-RPC protocol version."]
     JSONRPC.Version {} -> JSONRPCVersionResponse
 );
 
@@ -334,6 +342,7 @@ pub enum PlayerSeekMode {
 }
 
 define_method!(
+    #[doc="Seek through the playing item"]
     Player.Seek {
         #[serde(rename = "playerid")]
         id: u8,
@@ -365,6 +374,7 @@ pub struct PlayerSeekResponse {
 // Player.SetViewMode
 
 define_method!(
+    #[doc="Stops playback"]
     Player.Stop {
         #[serde(rename = "playerid")]
         id: u8
@@ -382,6 +392,7 @@ impl PlayerStop {
 // Playlist methods
 
 define_method!(
+    #[doc="Add item(s) to playlist"]
     Playlist.Add {
         #[serde(rename = "playlistid")]
         id: u8,
@@ -390,6 +401,7 @@ define_method!(
 );
 
 define_method!(
+    #[doc="Clear playlist"]
     Playlist.Clear {
         #[serde(rename = "playlistid")]
         id: u8
@@ -397,6 +409,7 @@ define_method!(
 );
 
 define_method!(
+    #[doc="Playlist.GetItems"]
     Playlist.GetItems {
         #[serde(rename = "playlistid")]
         id: u8,
@@ -428,10 +441,12 @@ pub struct PlaylistGetItemsResponse {
 }
 
 define_method!(
+    #[doc="Returns all existing playlists"]
     Playlist.GetPlaylists {} -> Vec<crate::types::playlist::Playlist>
 );
 
 define_method!(
+    #[doc="Retrieves the values of the given properties"]
     Playlist.GetProperties {
         #[serde(rename = "playlistid")]
         id: u8,
@@ -450,6 +465,7 @@ impl PlaylistGetProperties {
 }
 
 define_method!(
+    #[doc="Insert item(s) into playlist. Does not work for picture playlists (aka slideshows)."]
     Playlist.Insert {
         #[serde(rename = "playlistid")]
         id: u8,
@@ -459,6 +475,7 @@ define_method!(
 );
 
 define_method!(
+    #[doc="Remove item from playlist. Does not work for picture playlists (aka slideshows)."]
     Playlist.Remove {
         #[serde(rename = "playlistid")]
         id: u8,
@@ -467,6 +484,7 @@ define_method!(
 );
 
 define_method!(
+    #[doc="Swap items in the playlist. Does not work for picture playlists (aka slideshows)."]
     Playlist.Swap {
         #[serde(rename = "playlistid")]
         id: u8,
