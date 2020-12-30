@@ -103,7 +103,15 @@ pub struct AudioLibraryGetSourcesResponse {
     pub sources: Vec<crate::types::library::details::Source>,
 }
 
-// AudioLibrary.Scan
+define_method!(
+    #[doc="Scans the audio sources for new library items"]
+    AudioLibrary.Scan {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        directory: Option<String>,
+        #[doc="Whether or not to show the progress bar or any other GUI dialog"]
+        showdialogs: bool
+    } -> String
+);
 
 // AudioLibrary.SetAlbumDetails
 
