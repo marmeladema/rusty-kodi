@@ -266,6 +266,17 @@ pub trait CommandHandler {
 
     async fn volume_get(&mut self) -> usize;
     async fn volume_set(&mut self, level: usize);
+
+    // Library APIs
+
+    /// Updates the music database: find new files, remove deleted files, update modified files.
+    /// `uri` is a particular directory or song/file to update. If you do not specify it, everything is updated.
+    /// `rescan` should force rescan unmodified files.
+    async fn library_update(
+        &mut self,
+        uri: Option<&Url>,
+        rescan: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -314,6 +325,9 @@ enum MPDSubCommand {
     PlaylistId(Option<BString>),
     PlaylistInfo(Option<RangeInclusive<usize>>),
     Previous,
+    Rescan {
+        uri: Option<Url>,
+    },
     Seek {
         position: usize,
         time: Duration,
@@ -327,6 +341,9 @@ enum MPDSubCommand {
     Stop,
     Swap(usize, usize),
     TagTypes(TagTypes),
+    Update {
+        uri: Option<Url>,
+    },
     UrlHandlers,
 }
 
@@ -358,6 +375,7 @@ impl MPDSubCommand {
             Self::PlaylistId(_) => b"playlistid",
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
+            Self::Rescan { .. } => b"rescan",
             Self::Seek { .. } => b"seek",
             Self::SeekCurrent { .. } => b"seekcur",
             Self::SetVol(_) => b"setvol",
@@ -366,6 +384,7 @@ impl MPDSubCommand {
             Self::Stop => b"stop",
             Self::Swap(..) => b"swap",
             Self::TagTypes(_) => b"tagtypes",
+            Self::Update { .. } => b"update",
             Self::UrlHandlers => b"urlhandlers",
         })
     }
@@ -562,6 +581,7 @@ impl MPDSubCommand {
                 stream.write_all(b"playlistinfo\n").await?;
                 stream.write_all(b"plchanges\n").await?;
                 stream.write_all(b"plchangesposid\n").await?;
+                stream.write_all(b"rescan\n").await?;
                 stream.write_all(b"seek\n").await?;
                 stream.write_all(b"seekcur\n").await?;
                 stream.write_all(b"setvol\n").await?;
@@ -570,6 +590,7 @@ impl MPDSubCommand {
                 stream.write_all(b"stop\n").await?;
                 stream.write_all(b"swap\n").await?;
                 stream.write_all(b"tagtypes\n").await?;
+                stream.write_all(b"update\n").await?;
                 stream.write_all(b"urlhandlers\n").await?;
                 Ok(Ok(()))
             }
@@ -645,6 +666,10 @@ impl MPDSubCommand {
                 handler.previous().await;
                 Ok(Ok(()))
             }
+            Self::Rescan { uri } => {
+                handler.library_update(uri.as_ref(), true).await?;
+                Ok(Ok(()))
+            }
             Self::Seek { position, time } => {
                 handler.seek(*position, *time).await?;
                 Ok(Ok(()))
@@ -671,6 +696,10 @@ impl MPDSubCommand {
                 Ok(Ok(()))
             }
             Self::TagTypes(_) => Ok(Ok(())),
+            Self::Update { uri } => {
+                handler.library_update(uri.as_ref(), false).await?;
+                Ok(Ok(()))
+            }
             Self::UrlHandlers => Ok(Ok(())),
         }
     }
@@ -1056,6 +1085,27 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::PlaylistChangesPosId { version, range })
     } else if name.as_ref() == b"previous" {
         MPDCommand::Sub(MPDSubCommand::Previous)
+    } else if name.as_ref() == b"rescan" {
+        if args.is_empty() {
+            MPDCommand::Sub(MPDSubCommand::Rescan { uri: None })
+        } else {
+            let (input, rest) = next_arg!(name, args, BString);
+            args = rest;
+            let input = Vec::from(input).into_string_lossy();
+            let base = Url::parse("file:///").unwrap();
+            let opts = Url::options().base_url(Some(&base));
+            match opts.parse(input.as_str()) {
+                Ok(url) => MPDCommand::Sub(MPDSubCommand::Rescan { uri: Some(url) }),
+                Err(_) => {
+                    let msg = format!("Malformed URI");
+                    MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::Unknown(msg),
+                    })
+                }
+            }
+        }
     } else if name.as_ref() == b"seek" {
         let (position, rest) = next_arg!(name, args, usize);
         args = rest;
@@ -1120,6 +1170,27 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                         name: BString::from(name),
                         args: BString::from(args),
                         reason: CommandError::InvalidArgument(msg),
+                    })
+                }
+            }
+        }
+    } else if name.as_ref() == b"update" {
+        if args.is_empty() {
+            MPDCommand::Sub(MPDSubCommand::Update { uri: None })
+        } else {
+            let (input, rest) = next_arg!(name, args, BString);
+            args = rest;
+            let input = Vec::from(input).into_string_lossy();
+            let base = Url::parse("file:///").unwrap();
+            let opts = Url::options().base_url(Some(&base));
+            match opts.parse(input.as_str()) {
+                Ok(url) => MPDCommand::Sub(MPDSubCommand::Update { uri: Some(url) }),
+                Err(_) => {
+                    let msg = format!("Malformed URI");
+                    MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::Unknown(msg),
                     })
                 }
             }

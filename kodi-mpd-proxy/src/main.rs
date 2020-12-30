@@ -532,6 +532,30 @@ impl CommandHandler for KodiProxyCommandHandler {
             .await
             .unwrap();
     }
+
+    async fn library_update(
+        &mut self,
+        uri: Option<&Url>,
+        _: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let directory = if let Some(uri) = uri {
+            let path = uri.to_file_path().unwrap();
+            let path = self
+                .path_remap(path.strip_prefix("/").unwrap())
+                .await
+                .unwrap();
+            Some(path.to_str().unwrap().to_string())
+        } else {
+            None
+        };
+        self.kodi_client
+            .send_method(AudioLibraryScan {
+                directory,
+                showdialogs: true,
+            })
+            .await?;
+        Ok(())
+    }
 }
 
 #[derive(Clap)]
