@@ -3,7 +3,7 @@ use bstr::{BStr, BString, ByteSlice, ByteVec};
 use std::io::{Cursor, Write};
 use std::ops::RangeInclusive;
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tracing::{event, Level};
@@ -61,51 +61,51 @@ pub struct MPDStatus {
 
 impl std::fmt::Display for MPDStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "partition: default\n")?;
+        writeln!(f, "partition: default")?;
         if let Some(volume) = self.volume {
-            write!(f, "volume: {}\n", volume)?
+            writeln!(f, "volume: {}", volume)?
         }
         if let Some(repeat) = self.repeat {
-            write!(f, "repeat: {}\n", repeat as usize)?
+            writeln!(f, "repeat: {}", repeat as usize)?
         }
         if let Some(random) = self.random {
-            write!(f, "random: {}\n", random as usize)?
+            writeln!(f, "random: {}", random as usize)?
         }
         if let Some(single) = self.single {
-            write!(f, "single: {}\n", single as usize)?;
+            writeln!(f, "single: {}", single as usize)?;
         }
         if let Some(consume) = self.consume {
-            write!(f, "consume: {}\n", consume as usize)?;
+            writeln!(f, "consume: {}", consume as usize)?;
         }
         if let Some(playlist) = self.playlist {
-            write!(f, "playlist: {}\n", playlist)?;
+            writeln!(f, "playlist: {}", playlist)?;
         }
         if let Some(playlistlength) = self.playlistlength {
-            write!(f, "playlistlength: {}\n", playlistlength)?;
+            writeln!(f, "playlistlength: {}", playlistlength)?;
         }
-        write!(f, "state: {}\n", self.state)?;
+        writeln!(f, "state: {}", self.state)?;
         if let Some(song) = self.song {
-            write!(f, "song: {}\n", song)?;
+            writeln!(f, "song: {}", song)?;
         }
         if let Some(songid) = self.songid {
-            write!(f, "songid: {}\n", songid)?;
+            writeln!(f, "songid: {}", songid)?;
         }
         if let Some(nextsong) = self.nextsong {
-            write!(f, "nextsong: {}\n", nextsong)?;
+            writeln!(f, "nextsong: {}", nextsong)?;
         }
         if let Some(nextsongid) = self.nextsongid {
-            write!(f, "nextsongid: {}\n", nextsongid)?;
+            writeln!(f, "nextsongid: {}", nextsongid)?;
         }
         if let Some(elapsed) = self.elapsed {
             if let Some(duration) = self.duration {
-                write!(f, "time: {}:{}\n", elapsed.as_secs(), duration.as_secs())?;
+                writeln!(f, "time: {}:{}", elapsed.as_secs(), duration.as_secs())?;
             }
         }
         if let Some(elapsed) = self.elapsed {
-            write!(f, "elapsed: {:.3}\n", elapsed.as_secs_f32())?;
+            writeln!(f, "elapsed: {:.3}", elapsed.as_secs_f32())?;
         }
         if let Some(duration) = self.duration {
-            write!(f, "duration: {:.3}\n", duration.as_secs_f32())?;
+            writeln!(f, "duration: {:.3}", duration.as_secs_f32())?;
         }
         Ok(())
     }
@@ -139,26 +139,26 @@ pub struct File {
 impl File {
     fn write_to(&self, writer: &mut (dyn std::io::Write + Send + Sync)) {
         if let Some(duration) = self.duration {
-            write!(writer, "duration: {}\n", duration).unwrap();
-            write!(writer, "Time: {}\n", duration).unwrap();
+            writeln!(writer, "duration: {}", duration).unwrap();
+            writeln!(writer, "Time: {}", duration).unwrap();
         }
         for artist in &self.artist {
-            write!(writer, "Artist: {}\n", artist).unwrap();
+            writeln!(writer, "Artist: {}", artist).unwrap();
         }
         if let Some(ref album) = self.album {
-            write!(writer, "Album: {}\n", album).unwrap();
+            writeln!(writer, "Album: {}", album).unwrap();
         }
         if let Some(ref title) = self.title {
-            write!(writer, "Title: {}\n", title).unwrap();
+            writeln!(writer, "Title: {}", title).unwrap();
         }
         if let Some(track) = self.track {
-            write!(writer, "Track: {}\n", track).unwrap();
+            writeln!(writer, "Track: {}", track).unwrap();
         }
         if let Some(year) = self.year {
-            write!(writer, "Date: {}\n", year).unwrap();
+            writeln!(writer, "Date: {}", year).unwrap();
         }
         for genre in &self.genre {
-            write!(writer, "Genre: {}\n", genre).unwrap();
+            writeln!(writer, "Genre: {}", genre).unwrap();
         }
     }
 }
@@ -197,8 +197,8 @@ impl QueueEntry {
         writer.write_all(self.path.as_os_str().as_bytes()).unwrap();
         writer.write_all(b"\n").unwrap();
         self.file.write_to(writer);
-        write!(writer, "Pos: {}\n", self.position).unwrap();
-        write!(writer, "Id: {}\n", self.id).unwrap();
+        writeln!(writer, "Pos: {}", self.position).unwrap();
+        writeln!(writer, "Id: {}", self.id).unwrap();
     }
 }
 
@@ -418,7 +418,7 @@ impl CommandError {
         let mut buf = Vec::new();
         let mut cursor = Cursor::new(&mut buf);
         let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-        write!(writer, "ACK [{}@{}] {{{}}} {}\n", code, idx, name, msg).unwrap();
+        writeln!(writer, "ACK [{}@{}] {{{}}} {}", code, idx, name, msg).unwrap();
         let data = &cursor.get_ref()[..(cursor.position() as usize)];
         eprintln!("Sending error: {:?}", String::from_utf8_lossy(data));
         stream.write_all(data).await?;
@@ -471,7 +471,7 @@ async fn getvol(
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    write!(writer, "volume: {}\n", handler.volume_get().await).unwrap();
+    writeln!(writer, "volume: {}", handler.volume_get().await).unwrap();
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
     Ok(Ok(()))
@@ -543,7 +543,7 @@ async fn addid(
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    write!(writer, "Id: {}\n", id).unwrap();
+    writeln!(writer, "Id: {}", id).unwrap();
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
     Ok(Ok(()))
@@ -939,7 +939,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         match opts.parse(input.as_str()) {
             Ok(url) => MPDCommand::Sub(MPDSubCommand::Add(url)),
             Err(_) => {
-                let msg = format!("Malformed URI");
+                let msg = "Malformed URI".to_string();
                 MPDCommand::Sub(MPDSubCommand::Invalid {
                     name: BString::from(name),
                     args: BString::from(args),
@@ -963,7 +963,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         match opts.parse(input.as_str()) {
             Ok(url) => MPDCommand::Sub(MPDSubCommand::AddId(url, position)),
             Err(_) => {
-                let msg = format!("Malformed URI");
+                let msg = "Malformed URI".to_string();
                 MPDCommand::Sub(MPDSubCommand::Invalid {
                     name: BString::from(name),
                     args: BString::from(args),
@@ -1018,7 +1018,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             match opts.parse(input.as_str()) {
                 Ok(url) => MPDCommand::Sub(MPDSubCommand::LsInfo(Some(url))),
                 Err(_) => {
-                    let msg = format!("Malformed URI");
+                    let msg = "Malformed URI".to_string();
                     MPDCommand::Sub(MPDSubCommand::Invalid {
                         name: BString::from(name),
                         args: BString::from(args),
@@ -1123,7 +1123,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             match opts.parse(input.as_str()) {
                 Ok(url) => MPDCommand::Sub(MPDSubCommand::Rescan { uri: Some(url) }),
                 Err(_) => {
-                    let msg = format!("Malformed URI");
+                    let msg = "Malformed URI".to_string();
                     MPDCommand::Sub(MPDSubCommand::Invalid {
                         name: BString::from(name),
                         args: BString::from(args),
@@ -1191,7 +1191,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                     MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Enable(tags)))
                 }
                 _ => {
-                    let msg = format!("Unknown sub command");
+                    let msg = "Unknown sub command".to_string();
                     MPDCommand::Sub(MPDSubCommand::Invalid {
                         name: BString::from(name),
                         args: BString::from(args),
@@ -1212,7 +1212,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             match opts.parse(input.as_str()) {
                 Ok(url) => MPDCommand::Sub(MPDSubCommand::Update { uri: Some(url) }),
                 Err(_) => {
-                    let msg = format!("Malformed URI");
+                    let msg = "Malformed URI".to_string();
                     MPDCommand::Sub(MPDSubCommand::Invalid {
                         name: BString::from(name),
                         args: BString::from(args),
@@ -1266,10 +1266,11 @@ async fn parse_command_line(
     }
 
     if buf.last() != Some(&b'\n') {
-        Err(std::io::Error::new(
+        return Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
             "failed to read line from stream",
-        ))?;
+        )
+        .into());
     } else {
         buf.pop();
     }
