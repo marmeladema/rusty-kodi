@@ -475,6 +475,46 @@ impl CommandHandler for KodiProxyCommandHandler {
             .unwrap();
     }
 
+    async fn seek(
+        &mut self,
+        position: usize,
+        time: Duration,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(playlist_id) = self.player.playlist() {
+            if self.player.position() != Some(position) {
+                self.kodi_client
+                    .send_method(PlayerOpen {
+                        item: PlayerOpenItem::PlaylistAt {
+                            id: playlist_id as usize,
+                            position,
+                        },
+                        options: Default::default(),
+                    })
+                    .await?;
+            }
+            self.kodi_client
+                .send_method(PlayerSeek {
+                    id: self.player.id(),
+                    value: PlayerSeekMode::Time(time.into()),
+                })
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn seek_current(
+        &mut self,
+        time: Duration,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.kodi_client
+            .send_method(PlayerSeek {
+                id: self.player.id(),
+                value: PlayerSeekMode::Time(time.into()),
+            })
+            .await?;
+        Ok(())
+    }
+
     async fn volume_get(&mut self) -> usize {
         let app_props = self
             .kodi_client
@@ -566,14 +606,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         });
     }
-}
-
-#[test]
-fn test_uri() {
-    let base = Url::parse("file://").unwrap();
-    let options = Url::options().base_url(Some(&base));
-    let url = options.parse("a//b");
-    println!("url: {:?}", url);
-    println!("url2: {:?}", Url::from_file_path("q//b"));
-    assert!(false);
 }

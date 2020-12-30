@@ -307,7 +307,38 @@ impl PlayerPlayPause {
 
 // Player.Rotate
 
-// Player.Seek
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PlayerSeekStep {
+    SmallForward,
+    SmallBackward,
+    BigForward,
+    BigBackward,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PlayerSeekMode {
+    Percentage(f64),
+    Time(crate::types::global::Time),
+    Step(PlayerSeekStep),
+    Seconds(isize),
+}
+
+define_method!(
+    Player.Seek {
+        #[serde(rename = "playerid")]
+        id: u8,
+        value: PlayerSeekMode
+    } -> PlayerSeekResponse
+);
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+pub struct PlayerSeekResponse {
+    pub percentage: f64,
+    pub time: crate::types::global::Time,
+    pub totaltime: crate::types::global::Time,
+}
 
 // Player.SetAudioStream
 

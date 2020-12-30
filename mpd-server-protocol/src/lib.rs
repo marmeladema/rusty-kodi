@@ -254,6 +254,15 @@ pub trait CommandHandler {
     async fn next(&mut self);
     async fn stop(&mut self);
     async fn pause(&mut self, pause: Option<bool>);
+    async fn seek(
+        &mut self,
+        position: usize,
+        time: Duration,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn seek_current(
+        &mut self,
+        time: Duration,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     async fn volume_get(&mut self) -> usize;
     async fn volume_set(&mut self, level: usize);
@@ -305,6 +314,13 @@ enum MPDSubCommand {
     PlaylistId(Option<BString>),
     PlaylistInfo(Option<RangeInclusive<usize>>),
     Previous,
+    Seek {
+        position: usize,
+        time: Duration,
+    },
+    SeekCurrent {
+        time: Duration,
+    },
     SetVol(usize),
     Status,
     Stats,
@@ -342,6 +358,8 @@ impl MPDSubCommand {
             Self::PlaylistId(_) => b"playlistid",
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
+            Self::Seek { .. } => b"seek",
+            Self::SeekCurrent { .. } => b"seekcur",
             Self::SetVol(_) => b"setvol",
             Self::Status => b"status",
             Self::Stats => b"stats",
@@ -544,6 +562,8 @@ impl MPDSubCommand {
                 stream.write_all(b"playlistinfo\n").await?;
                 stream.write_all(b"plchanges\n").await?;
                 stream.write_all(b"plchangesposid\n").await?;
+                stream.write_all(b"seek\n").await?;
+                stream.write_all(b"seekcur\n").await?;
                 stream.write_all(b"setvol\n").await?;
                 stream.write_all(b"status\n").await?;
                 stream.write_all(b"stats\n").await?;
@@ -623,6 +643,14 @@ impl MPDSubCommand {
             }
             Self::Previous => {
                 handler.previous().await;
+                Ok(Ok(()))
+            }
+            Self::Seek { position, time } => {
+                handler.seek(*position, *time).await?;
+                Ok(Ok(()))
+            }
+            Self::SeekCurrent { time } => {
+                handler.seek_current(*time).await?;
                 Ok(Ok(()))
             }
             Self::SetVol(level) => {
@@ -1028,6 +1056,21 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::PlaylistChangesPosId { version, range })
     } else if name.as_ref() == b"previous" {
         MPDCommand::Sub(MPDSubCommand::Previous)
+    } else if name.as_ref() == b"seek" {
+        let (position, rest) = next_arg!(name, args, usize);
+        args = rest;
+        let (time, rest) = next_arg!(name, args, usize);
+        args = rest;
+        MPDCommand::Sub(MPDSubCommand::Seek {
+            position,
+            time: Duration::from_secs(time as u64),
+        })
+    } else if name.as_ref() == b"seekcur" {
+        let (time, rest) = next_arg!(name, args, usize);
+        args = rest;
+        MPDCommand::Sub(MPDSubCommand::SeekCurrent {
+            time: Duration::from_secs(time as u64),
+        })
     } else if name.as_ref() == b"setvol" {
         let (arg, rest) = next_arg!(name, args, usize);
         args = rest;

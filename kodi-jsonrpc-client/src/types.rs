@@ -89,6 +89,24 @@ pub mod global {
         }
     }
 
+    impl From<Duration> for Time {
+        fn from(duration: Duration) -> Self {
+            let mut total = duration.as_millis() as u64;
+            let milliseconds: i16 = (total % 1000) as i16;
+            total /= 1000;
+            let seconds = (total % 60) as u8;
+            total /= 60;
+            let minutes = (total % 60) as u8;
+            let hours = total / 60;
+            Self {
+                hours,
+                minutes,
+                seconds,
+                milliseconds,
+            }
+        }
+    }
+
     fn serialize_toggle<S>(serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -935,4 +953,25 @@ pub mod video {
         pub position: f64,
         pub total: f64,
     }
+}
+
+#[test]
+fn test_global_time() {
+    use crate::types::global::Time;
+    use std::time::Duration;
+
+    let dur = Duration::new(132, 0);
+    let time: Time = dur.into();
+
+    assert_eq!(
+        time,
+        Time {
+            hours: 0,
+            minutes: 2,
+            seconds: 12,
+            milliseconds: 0,
+        }
+    );
+
+    assert_eq!(Duration::from(time), dur);
 }
