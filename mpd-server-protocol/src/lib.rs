@@ -202,6 +202,22 @@ impl QueueEntry {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum QueueSong {
+    Id(usize),
+    Pos(usize),
+}
+
+impl QueueSong {
+    fn from_id(id: usize) -> Self {
+        Self::Id(id)
+    }
+
+    fn from_pos(pos: usize) -> Self {
+        Self::Pos(pos)
+    }
+}
+
 #[async_trait]
 pub trait CommandHandler {
     // fn url_parse(input: &str) -> Url;
@@ -249,8 +265,7 @@ pub trait CommandHandler {
     async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     async fn previous(&mut self);
-    async fn play(&mut self, pos: usize);
-    async fn playid(&mut self, id: usize);
+    async fn play(&mut self, song: Option<QueueSong>);
     async fn next(&mut self);
     async fn stop(&mut self);
     async fn pause(&mut self, pause: Option<bool>);
@@ -315,8 +330,12 @@ enum MPDSubCommand {
     NotCommands,
     Outputs,
     Pause(Option<bool>),
-    Play(usize),
-    PlayId(usize),
+    Play {
+        songpos: Option<usize>,
+    },
+    PlayId {
+        songid: Option<usize>,
+    },
     PlaylistChanges {
         version: usize,
         range: Option<RangeInclusive<usize>>,
@@ -375,8 +394,8 @@ impl MPDSubCommand {
             Self::NotCommands => b"notcommands",
             Self::Outputs => b"outputs",
             Self::Pause(_) => b"pause",
-            Self::Play(_) => b"play",
-            Self::PlayId(_) => b"playid",
+            Self::Play { .. } => b"play",
+            Self::PlayId { .. } => b"playid",
             Self::PlaylistChanges { .. } => b"plchanges",
             Self::PlaylistChangesPosId { .. } => b"plchangesposid",
             Self::PlaylistId(_) => b"playlistid",
@@ -732,12 +751,16 @@ impl MPDSubCommand {
                 handler.pause(pause.as_ref().copied()).await;
                 Ok(Ok(()))
             }
-            Self::Play(pos) => {
-                handler.play(*pos).await;
+            Self::Play { songpos } => {
+                handler
+                    .play(songpos.as_ref().copied().map(QueueSong::from_pos))
+                    .await;
                 Ok(Ok(()))
             }
-            Self::PlayId(songid) => {
-                handler.playid(*songid).await;
+            Self::PlayId { songid } => {
+                handler
+                    .play(songid.as_ref().copied().map(QueueSong::from_id))
+                    .await;
                 Ok(Ok(()))
             }
             Self::PlaylistChanges { range, .. } => {
@@ -1139,13 +1162,23 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             }
         }
     } else if name.as_ref() == b"play" {
-        let (pos, rest) = next_arg!(name, args, usize);
-        args = rest;
-        MPDCommand::Sub(MPDSubCommand::Play(pos))
+        let songpos = if args.is_empty() {
+            None
+        } else {
+            let (pos, rest) = next_arg!(name, args, usize);
+            args = rest;
+            Some(pos)
+        };
+        MPDCommand::Sub(MPDSubCommand::Play { songpos })
     } else if name.as_ref() == b"playid" {
-        let (songid, rest) = next_arg!(name, args, usize);
-        args = rest;
-        MPDCommand::Sub(MPDSubCommand::PlayId(songid))
+        let songid = if args.is_empty() {
+            None
+        } else {
+            let (id, rest) = next_arg!(name, args, usize);
+            args = rest;
+            Some(id)
+        };
+        MPDCommand::Sub(MPDSubCommand::PlayId { songid })
     } else if name.as_ref() == b"playlistid" {
         let id = if args.is_empty() {
             None

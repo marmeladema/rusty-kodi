@@ -5,7 +5,7 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, File, MPDState, MPDStatus, QueueEntry, Server, Url,
+    CommandHandler, DirEntry, File, MPDState, MPDStatus, QueueEntry, QueueSong, Server, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -397,44 +397,53 @@ impl CommandHandler for KodiProxyCommandHandler {
             .unwrap();
     }
 
-    async fn play(&mut self, pos: usize) {
-        use kodi_jsonrpc_client::types::player::*;
+    async fn play(&mut self, song: Option<QueueSong>) {
+        let playlist_id = match self.player.playlist() {
+            Some(id) => id,
+            None => return,
+        };
 
-        self.kodi_client
-            .send_method(PlayerGoTo {
-                id: self.player.id(),
-                to: GoTo::Absolute(pos),
-            })
-            .await
-            .unwrap();
-    }
-
-    async fn playid(&mut self, id: usize) {
-        use kodi_jsonrpc_client::types::player::*;
-        let player_id = self.player.id();
-        let playlist_id = self.player.playlist();
-        for (pos, item) in self.player.playlist_items().iter().enumerate().rev() {
-            if item.id == Some(id) {
+        match song {
+            Some(QueueSong::Id(songid)) => {
+                for (pos, item) in self.player.playlist_items().iter().enumerate().rev() {
+                    if item.id == Some(songid) {
+                        self.kodi_client
+                            .send_method(PlayerOpen {
+                                item: PlayerOpenItem::PlaylistAt {
+                                    id: playlist_id as usize,
+                                    position: pos,
+                                },
+                                options: Default::default(),
+                            })
+                            .await
+                            .unwrap();
+                        break;
+                    }
+                }
+            }
+            Some(QueueSong::Pos(songpos)) => {
                 self.kodi_client
-                    .send_method(PlayerGoTo {
-                        id: player_id,
-                        to: GoTo::Absolute(pos),
+                    .send_method(PlayerOpen {
+                        item: PlayerOpenItem::PlaylistAt {
+                            id: playlist_id as usize,
+                            position: songpos,
+                        },
+                        options: Default::default(),
                     })
                     .await
                     .unwrap();
-                if let Some(playlist_id) = playlist_id {
-                    self.kodi_client
-                        .send_method(PlayerOpen {
-                            item: PlayerOpenItem::PlaylistAt {
-                                id: playlist_id as usize,
-                                position: pos,
-                            },
-                            options: Default::default(),
-                        })
-                        .await
-                        .unwrap();
-                }
-                break;
+            }
+            None => {
+                self.kodi_client
+                    .send_method(PlayerOpen {
+                        item: PlayerOpenItem::PlaylistAt {
+                            id: playlist_id as usize,
+                            position: 0,
+                        },
+                        options: Default::default(),
+                    })
+                    .await
+                    .unwrap();
             }
         }
     }
