@@ -253,8 +253,8 @@ pub trait CommandHandler {
 
     async fn queue_swap(
         &mut self,
-        pos1: usize,
-        pos2: usize,
+        song1: QueueSong,
+        song2: QueueSong,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     async fn queue_delete(
@@ -369,6 +369,7 @@ enum MPDSubCommand {
     Stats,
     Stop,
     Swap(usize, usize),
+    SwapId(usize, usize),
     TagTypes(TagTypes),
     Update {
         uri: Option<Url>,
@@ -415,6 +416,7 @@ impl MPDSubCommand {
             Self::Stats => b"stats",
             Self::Stop => b"stop",
             Self::Swap(..) => b"swap",
+            Self::SwapId(..) => b"swapid",
             Self::TagTypes(_) => b"tagtypes",
             Self::Update { .. } => b"update",
             Self::UrlHandlers => b"urlhandlers",
@@ -816,7 +818,15 @@ impl MPDSubCommand {
                 Ok(Ok(()))
             }
             Self::Swap(pos1, pos2) => {
-                handler.queue_swap(*pos1, *pos2).await?;
+                handler
+                    .queue_swap(QueueSong::from_pos(*pos1), QueueSong::from_pos(*pos2))
+                    .await?;
+                Ok(Ok(()))
+            }
+            Self::SwapId(id1, id2) => {
+                handler
+                    .queue_swap(QueueSong::from_id(*id1), QueueSong::from_id(*id2))
+                    .await?;
                 Ok(Ok(()))
             }
             Self::TagTypes(_) => Ok(Ok(())),
@@ -1304,6 +1314,12 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         let (pos2, rest) = next_arg!(name, args, usize);
         args = rest;
         MPDCommand::Sub(MPDSubCommand::Swap(pos1, pos2))
+    } else if name.as_ref() == b"swapid" {
+        let (id1, rest) = next_arg!(name, args, usize);
+        args = rest;
+        let (id2, rest) = next_arg!(name, args, usize);
+        args = rest;
+        MPDCommand::Sub(MPDSubCommand::SwapId(id1, id2))
     } else if name.as_ref() == b"tagtypes" {
         if args.is_empty() {
             MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::List))

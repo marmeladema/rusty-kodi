@@ -358,10 +358,24 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn queue_swap(
         &mut self,
-        position1: usize,
-        position2: usize,
+        song1: QueueSong,
+        song2: QueueSong,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(id) = self.player.playlist() {
+            let position1 = match song1 {
+                QueueSong::Id(songid) => match self.song_id_to_pos(songid) {
+                    Some(songpos) => songpos,
+                    None => return Ok(()),
+                },
+                QueueSong::Pos(songpos) => songpos,
+            };
+            let position2 = match song2 {
+                QueueSong::Id(songid) => match self.song_id_to_pos(songid) {
+                    Some(songpos) => songpos,
+                    None => return Ok(()),
+                },
+                QueueSong::Pos(songpos) => songpos,
+            };
             self.kodi_client
                 .send_method(PlaylistSwap {
                     id,
