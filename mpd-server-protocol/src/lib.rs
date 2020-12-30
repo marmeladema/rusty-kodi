@@ -1075,6 +1075,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         let range = RangeInclusive::from_bytes(arg.as_slice()).unwrap().0;
         MPDCommand::Sub(MPDSubCommand::Delete(range))
     } else if name.as_ref() == b"idle" {
+        args = b"";
         MPDCommand::Sub(MPDSubCommand::Idle)
     } else if name.as_ref() == b"listplaylist" {
         let (playlist, rest) = next_arg!(name, args, BString);

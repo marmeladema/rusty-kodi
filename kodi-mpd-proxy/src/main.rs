@@ -202,26 +202,23 @@ impl CommandHandler for KodiProxyCommandHandler {
         let mut items = Vec::new();
         let playlist_items = self.player.playlist_items();
         let (start, range) = if let Some(range) = range {
-            (*range.start(), range)
+            (*range.start(), playlist_items.get(range).unwrap_or(&[][..]))
+        } else if playlist_items.is_empty() {
+            (0, &[][..])
         } else {
-            (0, 0..=(playlist_items.len() - 1))
+            (0, &playlist_items[..])
         };
-        items.extend(
-            self.player.playlist_items()[range]
-                .iter()
-                .enumerate()
-                .map(|(idx, item)| QueueEntry {
-                    path: PathBuf::from(item.file.as_ref().unwrap()),
-                    file: File {
-                        artist: item.artist.clone(),
-                        album: item.album.as_ref().map(String::from),
-                        title: item.title.as_ref().map(String::from),
-                        ..Default::default()
-                    },
-                    position: idx + start,
-                    id: usize_to_bstring(item.id.unwrap()),
-                }),
-        );
+        items.extend(range.iter().enumerate().map(|(idx, item)| QueueEntry {
+            path: PathBuf::from(item.file.as_ref().unwrap()),
+            file: File {
+                artist: item.artist.clone(),
+                album: item.album.as_ref().map(String::from),
+                title: item.title.as_ref().map(String::from),
+                ..Default::default()
+            },
+            position: idx + start,
+            id: usize_to_bstring(item.id.unwrap()),
+        }));
         items
     }
 
