@@ -308,6 +308,7 @@ enum MPDSubCommand {
     },
     ListPlaylist(BString),
     ListPlaylistInfo(BString),
+    ListPlaylists,
     LsInfo(Option<Url>),
     Next,
     NoIdle,
@@ -367,6 +368,7 @@ impl MPDSubCommand {
             Self::Invalid { name, .. } => name,
             Self::ListPlaylist(_) => b"listplaylist",
             Self::ListPlaylistInfo(_) => b"listplaylistinfo",
+            Self::ListPlaylists => b"listplaylists",
             Self::LsInfo(_) => b"lsinfo",
             Self::Next => b"next",
             Self::NoIdle => b"noidle",
@@ -717,6 +719,7 @@ impl MPDSubCommand {
                     "playlist does not exist".to_owned(),
                 )));
             }
+            Self::ListPlaylists => Ok(Ok(())),
             Self::LsInfo(path) => lsinfo(stream, handler, path.as_ref(), buf).await,
             Self::Next => {
                 handler.next().await;
@@ -1085,6 +1088,8 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         let (playlist, rest) = next_arg!(name, args, BString);
         args = rest;
         MPDCommand::Sub(MPDSubCommand::ListPlaylistInfo(playlist))
+    } else if name.as_ref() == b"listplaylists" {
+        MPDCommand::Sub(MPDSubCommand::ListPlaylists)
     } else if name.as_ref() == b"lsinfo" {
         if args.is_empty() {
             MPDCommand::Sub(MPDSubCommand::LsInfo(None))
