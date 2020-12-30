@@ -254,6 +254,8 @@ pub trait CommandHandler {
     async fn next(&mut self);
     async fn stop(&mut self);
     async fn pause(&mut self, pause: Option<bool>);
+    async fn random(&mut self, state: bool)
+        -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     async fn seek(
         &mut self,
         position: usize,
@@ -325,6 +327,9 @@ enum MPDSubCommand {
     PlaylistId(Option<BString>),
     PlaylistInfo(Option<RangeInclusive<usize>>),
     Previous,
+    Random {
+        state: bool,
+    },
     Rescan {
         uri: Option<Url>,
     },
@@ -375,6 +380,7 @@ impl MPDSubCommand {
             Self::PlaylistId(_) => b"playlistid",
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
+            Self::Random { .. } => b"random",
             Self::Rescan { .. } => b"rescan",
             Self::Seek { .. } => b"seek",
             Self::SeekCurrent { .. } => b"seekcur",
@@ -581,6 +587,7 @@ impl MPDSubCommand {
                 stream.write_all(b"playlistinfo\n").await?;
                 stream.write_all(b"plchanges\n").await?;
                 stream.write_all(b"plchangesposid\n").await?;
+                stream.write_all(b"random\n").await?;
                 stream.write_all(b"rescan\n").await?;
                 stream.write_all(b"seek\n").await?;
                 stream.write_all(b"seekcur\n").await?;
@@ -664,6 +671,10 @@ impl MPDSubCommand {
             }
             Self::Previous => {
                 handler.previous().await;
+                Ok(Ok(()))
+            }
+            Self::Random { state } => {
+                handler.random(*state).await?;
                 Ok(Ok(()))
             }
             Self::Rescan { uri } => {
@@ -1085,6 +1096,21 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::PlaylistChangesPosId { version, range })
     } else if name.as_ref() == b"previous" {
         MPDCommand::Sub(MPDSubCommand::Previous)
+    } else if name.as_ref() == b"random" {
+        let (arg, rest) = next_arg!(name, args, usize);
+        args = rest;
+        match arg {
+            0 => MPDCommand::Sub(MPDSubCommand::Random { state: false }),
+            1 => MPDCommand::Sub(MPDSubCommand::Random { state: true }),
+            _ => {
+                let msg = format!("Boolean (0/1) expected: {}", arg);
+                MPDCommand::Sub(MPDSubCommand::Invalid {
+                    name: BString::from(name),
+                    args: BString::from(args),
+                    reason: CommandError::Unknown(msg),
+                })
+            }
+        }
     } else if name.as_ref() == b"rescan" {
         if args.is_empty() {
             MPDCommand::Sub(MPDSubCommand::Rescan { uri: None })

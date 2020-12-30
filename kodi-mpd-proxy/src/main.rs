@@ -475,6 +475,19 @@ impl CommandHandler for KodiProxyCommandHandler {
             .unwrap();
     }
 
+    async fn random(
+        &mut self,
+        state: bool,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.kodi_client
+            .send_method(PlayerSetShuffle {
+                id: self.player.id(),
+                shuffle: kodi_jsonrpc_client::types::global::Toggle::Value(state),
+            })
+            .await?;
+        Ok(())
+    }
+
     async fn seek(
         &mut self,
         position: usize,
