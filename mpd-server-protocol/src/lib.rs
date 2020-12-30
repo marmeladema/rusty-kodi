@@ -273,7 +273,7 @@ pub trait CommandHandler {
         -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     async fn seek(
         &mut self,
-        position: usize,
+        song: QueueSong,
         time: Duration,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
     async fn seek_current(
@@ -354,10 +354,14 @@ enum MPDSubCommand {
         uri: Option<Url>,
     },
     Seek {
-        position: usize,
+        songpos: usize,
         time: Duration,
     },
     SeekCurrent {
+        time: Duration,
+    },
+    SeekId {
+        songid: usize,
         time: Duration,
     },
     SetVol(usize),
@@ -405,6 +409,7 @@ impl MPDSubCommand {
             Self::Rescan { .. } => b"rescan",
             Self::Seek { .. } => b"seek",
             Self::SeekCurrent { .. } => b"seekcur",
+            Self::SeekId { .. } => b"seekid",
             Self::SetVol(_) => b"setvol",
             Self::Status => b"status",
             Self::Stats => b"stats",
@@ -785,12 +790,16 @@ impl MPDSubCommand {
                 handler.library_update(uri.as_ref(), true).await?;
                 Ok(Ok(()))
             }
-            Self::Seek { position, time } => {
-                handler.seek(*position, *time).await?;
+            Self::Seek { songpos, time } => {
+                handler.seek(QueueSong::from_pos(*songpos), *time).await?;
                 Ok(Ok(()))
             }
             Self::SeekCurrent { time } => {
                 handler.seek_current(*time).await?;
+                Ok(Ok(()))
+            }
+            Self::SeekId { songid, time } => {
+                handler.seek(QueueSong::from_id(*songid), *time).await?;
                 Ok(Ok(()))
             }
             Self::SetVol(level) => {
@@ -1256,18 +1265,27 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             }
         }
     } else if name.as_ref() == b"seek" {
-        let (position, rest) = next_arg!(name, args, usize);
+        let (songpos, rest) = next_arg!(name, args, usize);
         args = rest;
         let (time, rest) = next_arg!(name, args, usize);
         args = rest;
         MPDCommand::Sub(MPDSubCommand::Seek {
-            position,
+            songpos,
             time: Duration::from_secs(time as u64),
         })
     } else if name.as_ref() == b"seekcur" {
         let (time, rest) = next_arg!(name, args, usize);
         args = rest;
         MPDCommand::Sub(MPDSubCommand::SeekCurrent {
+            time: Duration::from_secs(time as u64),
+        })
+    } else if name.as_ref() == b"seekid" {
+        let (songid, rest) = next_arg!(name, args, usize);
+        args = rest;
+        let (time, rest) = next_arg!(name, args, usize);
+        args = rest;
+        MPDCommand::Sub(MPDSubCommand::SeekId {
+            songid,
             time: Duration::from_secs(time as u64),
         })
     } else if name.as_ref() == b"setvol" {

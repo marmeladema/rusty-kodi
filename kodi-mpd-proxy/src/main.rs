@@ -50,6 +50,15 @@ impl KodiProxyCommandHandler {
         }
         None
     }
+
+    fn song_id_to_pos(&self, songid: usize) -> Option<usize> {
+        for (pos, item) in self.player.playlist_items().iter().enumerate().rev() {
+            if item.id == Some(songid) {
+                return Some(pos);
+            }
+        }
+        None
+    }
 }
 
 fn usize_to_bstring(val: usize) -> BString {
@@ -405,20 +414,17 @@ impl CommandHandler for KodiProxyCommandHandler {
 
         match song {
             Some(QueueSong::Id(songid)) => {
-                for (pos, item) in self.player.playlist_items().iter().enumerate().rev() {
-                    if item.id == Some(songid) {
-                        self.kodi_client
-                            .send_method(PlayerOpen {
-                                item: PlayerOpenItem::PlaylistAt {
-                                    id: playlist_id as usize,
-                                    position: pos,
-                                },
-                                options: Default::default(),
-                            })
-                            .await
-                            .unwrap();
-                        break;
-                    }
+                if let Some(songpos) = self.song_id_to_pos(songid) {
+                    self.kodi_client
+                        .send_method(PlayerOpen {
+                            item: PlayerOpenItem::PlaylistAt {
+                                id: playlist_id as usize,
+                                position: songpos,
+                            },
+                            options: Default::default(),
+                        })
+                        .await
+                        .unwrap();
                 }
             }
             Some(QueueSong::Pos(songpos)) => {
@@ -496,10 +502,17 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn seek(
         &mut self,
-        position: usize,
+        song: QueueSong,
         time: Duration,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(playlist_id) = self.player.playlist() {
+            let position = match song {
+                QueueSong::Id(songid) => match self.song_id_to_pos(songid) {
+                    Some(songpos) => songpos,
+                    None => return Ok(()),
+                },
+                QueueSong::Pos(songpos) => songpos,
+            };
             if self.player.position() != Some(position) {
                 self.kodi_client
                     .send_method(PlayerOpen {
