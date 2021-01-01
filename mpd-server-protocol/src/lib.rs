@@ -517,7 +517,11 @@ impl CommandError {
         let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
         writeln!(writer, "ACK [{}@{}] {{{}}} {}", code, idx, name, msg).unwrap();
         let data = &cursor.get_ref()[..(cursor.position() as usize)];
-        eprintln!("Sending error: {:?}", String::from_utf8_lossy(data));
+        event!(
+            Level::DEBUG,
+            "Sending error: {:?}",
+            String::from_utf8_lossy(data)
+        );
         stream.write_all(data).await?;
         Ok(())
     }

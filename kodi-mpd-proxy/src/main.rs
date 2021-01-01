@@ -21,6 +21,7 @@ use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::time::delay_for;
+use tracing::{event, Level};
 
 mod player;
 
@@ -710,11 +711,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 match server.poll().await {
                     Ok(true) => {}
                     Ok(false) => {
-                        println!("client has exited");
+                        event!(Level::DEBUG, "client has exited");
                         return;
                     }
                     Err(err) => {
-                        eprintln!("failed to read command; err = {:?}", err);
+                        event!(Level::ERROR, "failed to read command; err = {:?}", err);
                         return;
                     }
                 };
