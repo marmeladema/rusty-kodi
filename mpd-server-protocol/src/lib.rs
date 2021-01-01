@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bstr::{BStr, BString, ByteSlice, ByteVec};
+use enumset::{EnumSet, EnumSetType};
 use std::io::{Cursor, Write};
 use std::ops::RangeInclusive;
 use std::os::unix::ffi::OsStrExt;
@@ -8,6 +9,69 @@ use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tracing::{event, Level};
 pub use url::Url;
+
+#[derive(Debug, enum_map::Enum, EnumSetType)]
+pub enum MPDSubsystem {
+    Database,
+    Message,
+    Mixer,
+    Mount,
+    Neighbor,
+    Options,
+    // The final `s` is deliberately added to avoid clashing
+    // with the `EnumSetType::Output` associated type.
+    Outputs,
+    Partition,
+    Player,
+    Playlist,
+    Sticker,
+    StoredPlaylist,
+    Subscription,
+    Update,
+}
+
+impl std::fmt::Display for MPDSubsystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MPDSubsystem::Database => write!(f, "database"),
+            MPDSubsystem::Message => write!(f, "message"),
+            MPDSubsystem::Mixer => write!(f, "mixer"),
+            MPDSubsystem::Mount => write!(f, "mount"),
+            MPDSubsystem::Neighbor => write!(f, "neighbor"),
+            MPDSubsystem::Options => write!(f, "options"),
+            MPDSubsystem::Outputs => write!(f, "output"),
+            MPDSubsystem::Partition => write!(f, "partition"),
+            MPDSubsystem::Player => write!(f, "player"),
+            MPDSubsystem::Playlist => write!(f, "playlist"),
+            MPDSubsystem::Sticker => write!(f, "sticker"),
+            MPDSubsystem::StoredPlaylist => write!(f, "stored_playlist"),
+            MPDSubsystem::Subscription => write!(f, "subscription"),
+            MPDSubsystem::Update => write!(f, "update"),
+        }
+    }
+}
+
+impl MPDSubsystem {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        match bytes {
+            b"database" => Some(Self::Database),
+            b"message" => Some(Self::Message),
+            b"mixer" => Some(Self::Mixer),
+            b"mount" => Some(Self::Mount),
+            b"neighbor" => Some(Self::Neighbor),
+            b"options" => Some(Self::Options),
+            b"output" => Some(Self::Outputs),
+            b"partition" => Some(Self::Partition),
+            b"player" => Some(Self::Player),
+            b"playlist" => Some(Self::Playlist),
+            b"sticker" => Some(Self::Sticker),
+            b"stored_playlist" => Some(Self::StoredPlaylist),
+            b"subscription" => Some(Self::Subscription),
+            b"update" => Some(Self::Update),
+            _ => None,
+        }
+    }
+}
 
 /// MPD state: play, stop, or pause
 #[derive(Copy, Clone, Debug)]
@@ -41,7 +105,7 @@ pub struct MPDStatus {
     pub random: Option<bool>,
     pub single: Option<bool>,
     pub consume: Option<bool>,
-    pub playlist: Option<u32>,
+    pub playlist: Option<usize>,
     pub playlistlength: Option<usize>,
     pub state: MPDState,
     pub song: Option<usize>,
@@ -294,6 +358,11 @@ pub trait CommandHandler {
         uri: Option<&Url>,
         rescan: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn idle(
+        &mut self,
+        wanted: EnumSet<MPDSubsystem>,
+    ) -> Result<EnumSet<MPDSubsystem>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 #[derive(Debug, PartialEq)]
@@ -315,7 +384,7 @@ enum MPDSubCommand {
     Decoders,
     Delete(RangeInclusive<usize>),
     GetVol,
-    Idle,
+    Idle(EnumSet<MPDSubsystem>),
     Invalid {
         name: BString,
         args: BString,
@@ -388,7 +457,7 @@ impl MPDSubCommand {
             Self::Decoders => b"decoders",
             Self::Delete(_) => b"delete",
             Self::GetVol => b"getvol",
-            Self::Idle => b"idle",
+            Self::Idle(_) => b"idle",
             Self::Invalid { name, .. } => name,
             Self::ListPlaylist(_) => b"listplaylist",
             Self::ListPlaylistInfo(_) => b"listplaylistinfo",
@@ -714,17 +783,39 @@ impl MPDSubCommand {
                 Ok(Ok(()))
             }
             Self::GetVol => getvol(stream, handler, buf).await,
-            Self::Idle => {
-                let cmd = parse_command_line(stream, buf).await?;
-                if let Some(cmd) = cmd {
-                    if cmd == MPDCommand::Sub(MPDSubCommand::NoIdle) {
-                        Ok(Ok(()))
-                    } else {
-                        // stream.shutdown();
-                        Ok(Err(CommandError::Unknown(String::from("invalid command"))))
+            Self::Idle(subsystems) => {
+                loop {
+                    tokio::select! {
+                        cmd = parse_command_line(stream, buf) => {
+                            if let Some(cmd) = cmd? {
+                                if cmd == MPDCommand::Sub(MPDSubCommand::NoIdle) {
+                                    return Ok(Ok(()));
+                                } else {
+                                    // stream.shutdown();
+                                    return Ok(Err(CommandError::Unknown(String::from("invalid command"))));
+                                }
+                            } else {
+                                return Ok(Ok(()));
+                            }
+                        }
+                        set = handler.idle(*subsystems) => {
+                            match set {
+                                Ok(set) => if !set.is_empty() {
+                                    let mut cursor = Cursor::new(&mut *buf);
+                                    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+                                    for subsystem in set {
+                                        writeln!(writer, "changed: {}", subsystem)?;
+                                    }
+                                    let data = &cursor.get_ref()[..(cursor.position() as usize)];
+                                    stream.write_all(data).await?;
+                                    return Ok(Ok(()));
+                                }
+                                Err(err) => {
+                                    return Ok(Err(CommandError::Unknown(err.to_string())));
+                                }
+                            }
+                        }
                     }
-                } else {
-                    Ok(Ok(()))
                 }
             }
             Self::Invalid { name, args, reason } => {
@@ -1120,8 +1211,29 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         let range = RangeInclusive::from_bytes(arg.as_slice()).unwrap().0;
         MPDCommand::Sub(MPDSubCommand::Delete(range))
     } else if name.as_ref() == b"idle" {
-        args = b"";
-        MPDCommand::Sub(MPDSubCommand::Idle)
+        let mut set = EnumSet::empty();
+        while !args.is_empty() {
+            let (mut arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            arg.make_ascii_lowercase();
+            match MPDSubsystem::from_bytes(arg.as_slice()) {
+                Some(subsystem) => {
+                    set.insert(subsystem);
+                }
+                None => {
+                    let msg = format!("Unrecognized idle event: {}", arg);
+                    return MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::Unknown(msg),
+                    });
+                }
+            }
+        }
+        if set.is_empty() {
+            set = EnumSet::all();
+        }
+        MPDCommand::Sub(MPDSubCommand::Idle(set))
     } else if name.as_ref() == b"listplaylist" {
         let (playlist, rest) = next_arg!(name, args, BString);
         args = rest;
@@ -1503,7 +1615,11 @@ impl MPDCommand {
                 stream.write_all(b"OK\n").await?;
             }
             Self::Sub(command) => match command.process(stream, handler, buf).await? {
-                Ok(()) => stream.write_all(b"OK\n").await?,
+                Ok(()) => {
+                    if command != &MPDSubCommand::NoIdle {
+                        stream.write_all(b"OK\n").await?
+                    }
+                }
                 Err(err) => {
                     err.send(0, command.name(), stream).await?;
                 }

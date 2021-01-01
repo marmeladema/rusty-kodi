@@ -1,11 +1,14 @@
 use async_trait::async_trait;
 use bstr::{BStr, BString};
 use clap::Clap;
+use enum_map::EnumMap;
+use enumset::EnumSet;
 use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, File, MPDState, MPDStatus, QueueEntry, QueueSong, Server, Url,
+    CommandHandler, DirEntry, File, MPDState, MPDStatus, MPDSubsystem, QueueEntry, QueueSong,
+    Server, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -16,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::BufReader;
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 use tokio::time::delay_for;
 
 mod player;
@@ -23,13 +27,23 @@ mod player;
 struct KodiProxyCommandHandler {
     kodi_client: KodiClient,
     player: Arc<player::KodiPlayer>,
+    subsystem_events: EnumMap<MPDSubsystem, usize>,
+    subsystem_notifier: watch::Receiver<usize>,
+    subsystem_version: usize,
 }
 
 impl KodiProxyCommandHandler {
-    fn new(kodi_client: KodiClient, player: Arc<player::KodiPlayer>) -> Self {
+    fn new(
+        kodi_client: KodiClient,
+        player: Arc<player::KodiPlayer>,
+        subsystem_notifier: watch::Receiver<usize>,
+    ) -> Self {
         Self {
             kodi_client,
             player,
+            subsystem_events: EnumMap::default(),
+            subsystem_notifier,
+            subsystem_version: 0,
         }
     }
 
@@ -58,6 +72,20 @@ impl KodiProxyCommandHandler {
             }
         }
         None
+    }
+
+    fn events(&mut self, wanted: EnumSet<MPDSubsystem>) -> EnumSet<MPDSubsystem> {
+        let mut set = EnumSet::empty();
+        for (variant, value) in self.subsystem_events.iter_mut() {
+            if wanted.contains(variant) {
+                let count = self.player.event_get(variant);
+                if count > *value {
+                    *value = count;
+                    set.insert(variant);
+                }
+            }
+        }
+        set
     }
 }
 
@@ -111,7 +139,7 @@ impl CommandHandler for KodiProxyCommandHandler {
         status.songid = item.id;
         status.elapsed = self.player.time();
         status.duration = self.player.totaltime();
-        status.playlist = Some(self.player.playlist_version());
+        status.playlist = Some(self.player.event_get(MPDSubsystem::Playlist));
         status
     }
 
@@ -602,6 +630,19 @@ impl CommandHandler for KodiProxyCommandHandler {
             .await?;
         Ok(())
     }
+
+    async fn idle(
+        &mut self,
+        wanted: EnumSet<MPDSubsystem>,
+    ) -> Result<EnumSet<MPDSubsystem>, Box<dyn std::error::Error + Send + Sync>> {
+        let version = self.subsystem_notifier.recv().await.unwrap();
+        if version > self.subsystem_version {
+            self.subsystem_version = version;
+            Ok(self.events(wanted))
+        } else {
+            Ok(EnumSet::empty())
+        }
+    }
 }
 
 #[derive(Clap)]
@@ -632,7 +673,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         opts.kodi.clone(),
     );
 
-    let player = Arc::new(player::KodiPlayer::new(kodi_client));
+    let (tx, rx) = watch::channel(0);
+
+    let player = Arc::new(player::KodiPlayer::new(kodi_client, tx));
 
     let main_player = player.clone();
 
@@ -650,13 +693,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         let player = player.clone();
 
+        let rx = rx.clone();
+
         tokio::spawn(async move {
             let kodi_client =
                 KodiClient::new(reqwest::Client::builder().build().unwrap(), kodi_url);
 
             let mut server = Server::new(
                 BufReader::new(socket),
-                KodiProxyCommandHandler::new(kodi_client, player),
+                KodiProxyCommandHandler::new(kodi_client, player, rx),
             )
             .await
             .unwrap();

@@ -1,8 +1,11 @@
+use enum_map::EnumMap;
 use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::KodiClient;
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use mpd_server_protocol::MPDSubsystem;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use tokio::sync::watch::Sender;
 use tracing::{event, Level};
 
 pub(crate) struct KodiPlayer {
@@ -10,17 +13,21 @@ pub(crate) struct KodiPlayer {
     id: AtomicU8,
     properties: RwLock<kodi_jsonrpc_client::types::player::property::Value>,
     playlist_items: RwLock<Arc<Box<[kodi_jsonrpc_client::types::list::item::All]>>>,
-    playlist_version: AtomicU32,
+    subsystem_events: EnumMap<MPDSubsystem, AtomicUsize>,
+    subsystem_notifier: Sender<usize>,
+    subsystem_version: AtomicUsize,
 }
 
 impl KodiPlayer {
-    pub fn new(kodi_client: KodiClient) -> Self {
+    pub fn new(kodi_client: KodiClient, subsystem_notifier: Sender<usize>) -> Self {
         Self {
             kodi_client,
             id: AtomicU8::new(0),
             properties: RwLock::new(Default::default()),
             playlist_items: RwLock::new(Arc::new(Vec::new().into_boxed_slice())),
-            playlist_version: AtomicU32::new(0),
+            subsystem_events: EnumMap::default(),
+            subsystem_notifier,
+            subsystem_version: AtomicUsize::new(0),
         }
     }
 
@@ -42,7 +49,12 @@ impl KodiPlayer {
                 Ok(props) => {
                     if props.kind == Some(PlayerType::Audio) {
                         self.id.store(current, Ordering::Relaxed);
+                        let changed =
+                            self.position() != props.position || self.speed() != props.speed;
                         *self.properties.write().unwrap() = props;
+                        if changed {
+                            self.event_new(MPDSubsystem::Player);
+                        }
                         self.refresh_playlist().await;
                         break;
                     }
@@ -74,7 +86,7 @@ impl KodiPlayer {
                 Ok(PlaylistGetItemsResponse { items, .. }) => {
                     if &***self.playlist_items.read().unwrap() != items {
                         *self.playlist_items.write().unwrap() = Arc::new(items.into_boxed_slice());
-                        self.playlist_version.fetch_add(1, Ordering::Relaxed);
+                        self.event_new(MPDSubsystem::Playlist);
                     }
                 }
                 Err(err) => event!(
@@ -123,7 +135,14 @@ impl KodiPlayer {
         self.playlist_items.read().unwrap().clone()
     }
 
-    pub fn playlist_version(&self) -> u32 {
-        self.playlist_version.load(Ordering::Relaxed)
+    pub fn event_new(&self, event: MPDSubsystem) -> usize {
+        let count = self.subsystem_events[event].fetch_add(1, Ordering::Relaxed);
+        let version = self.subsystem_version.fetch_add(1, Ordering::Relaxed);
+        self.subsystem_notifier.broadcast(version + 1).unwrap();
+        count
+    }
+
+    pub fn event_get(&self, event: MPDSubsystem) -> usize {
+        self.subsystem_events[event].load(Ordering::Relaxed)
     }
 }
