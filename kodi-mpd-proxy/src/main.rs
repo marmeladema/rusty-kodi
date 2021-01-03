@@ -66,8 +66,8 @@ impl KodiProxyCommandHandler {
         None
     }
 
-    fn song_id_to_pos(&self, songid: usize) -> Option<usize> {
-        for (pos, item) in self.player.playlist_items().iter().enumerate().rev() {
+    async fn song_id_to_pos(&self, songid: usize) -> Option<usize> {
+        for (pos, item) in self.player.playlist_items().await.iter().enumerate().rev() {
             if item.id == Some(songid) {
                 return Some(pos);
             }
@@ -118,7 +118,7 @@ impl CommandHandler for KodiProxyCommandHandler {
             .send_method(PlayerGetItem::all_properties(self.player.id()))
             .await
             .unwrap();
-        if let Some(playlist_id) = self.player.playlist() {
+        if let Some(playlist_id) = self.player.playlist().await {
             let playlist_props = self
                 .kodi_client
                 .send_method(PlaylistGetProperties::all(playlist_id))
@@ -126,8 +126,8 @@ impl CommandHandler for KodiProxyCommandHandler {
                 .unwrap();
             status.playlistlength = playlist_props.size;
         }
-        if self.player.position().is_some() {
-            if let Some(speed) = self.player.speed() {
+        if self.player.position().await.is_some() {
+            if let Some(speed) = self.player.speed().await {
                 if speed == 0 {
                     status.state = MPDState::Pause;
                 } else {
@@ -135,11 +135,11 @@ impl CommandHandler for KodiProxyCommandHandler {
                 }
             }
         }
-        status.random = self.player.shuffled();
-        status.song = self.player.position();
+        status.random = self.player.shuffled().await;
+        status.song = self.player.position().await;
         status.songid = item.id;
-        status.elapsed = self.player.time();
-        status.duration = self.player.totaltime();
+        status.elapsed = self.player.time().await;
+        status.duration = self.player.totaltime().await;
         status.playlist = Some(self.player.event_get(MPDSubsystem::Playlist));
         status
     }
@@ -214,7 +214,7 @@ impl CommandHandler for KodiProxyCommandHandler {
     }
 
     async fn queue_current(&mut self) -> Option<QueueEntry> {
-        if let Some(position) = self.player.position() {
+        if let Some(position) = self.player.position().await {
             let PlayerGetItemResponse::Item(item) = self
                 .kodi_client
                 .send_method(PlayerGetItem::all_properties(self.player.id()))
@@ -238,7 +238,7 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn queue_list(&mut self, range: Option<RangeInclusive<usize>>) -> Vec<QueueEntry> {
         let mut items = Vec::new();
-        let playlist_items = self.player.playlist_items();
+        let playlist_items = self.player.playlist_items().await;
         let (start, range) = if let Some(range) = range {
             (*range.start(), playlist_items.get(range).unwrap_or(&[][..]))
         } else if playlist_items.is_empty() {
@@ -276,7 +276,7 @@ impl CommandHandler for KodiProxyCommandHandler {
     ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
         use kodi_jsonrpc_client::types::playlist::*;
 
-        let playlist_id = self.player.playlist().unwrap();
+        let playlist_id = self.player.playlist().await.unwrap();
 
         let path = url.to_file_path().unwrap();
         let path = self
@@ -325,7 +325,7 @@ impl CommandHandler for KodiProxyCommandHandler {
         use kodi_jsonrpc_client::types::list::item::FileType;
         use kodi_jsonrpc_client::types::playlist::*;
 
-        let playlist_id = self.player.playlist().unwrap();
+        let playlist_id = self.player.playlist().await.unwrap();
 
         let path = url.to_file_path().unwrap();
         let path = self
@@ -390,16 +390,16 @@ impl CommandHandler for KodiProxyCommandHandler {
         song1: QueueSong,
         song2: QueueSong,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(id) = self.player.playlist() {
+        if let Some(id) = self.player.playlist().await {
             let position1 = match song1 {
-                QueueSong::Id(songid) => match self.song_id_to_pos(songid) {
+                QueueSong::Id(songid) => match self.song_id_to_pos(songid).await {
                     Some(songpos) => songpos,
                     None => return Ok(()),
                 },
                 QueueSong::Pos(songpos) => songpos,
             };
             let position2 = match song2 {
-                QueueSong::Id(songid) => match self.song_id_to_pos(songid) {
+                QueueSong::Id(songid) => match self.song_id_to_pos(songid).await {
                     Some(songpos) => songpos,
                     None => return Ok(()),
                 },
@@ -420,7 +420,7 @@ impl CommandHandler for KodiProxyCommandHandler {
         &mut self,
         range: RangeInclusive<usize>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(id) = self.player.playlist() {
+        if let Some(id) = self.player.playlist().await {
             for position in range {
                 self.kodi_client
                     .send_method(PlaylistRemove { id, position })
@@ -431,7 +431,7 @@ impl CommandHandler for KodiProxyCommandHandler {
     }
 
     async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(id) = self.player.playlist() {
+        if let Some(id) = self.player.playlist().await {
             self.kodi_client.send_method(PlaylistClear { id }).await?;
         }
         Ok(())
@@ -450,14 +450,14 @@ impl CommandHandler for KodiProxyCommandHandler {
     }
 
     async fn play(&mut self, song: Option<QueueSong>) {
-        let playlist_id = match self.player.playlist() {
+        let playlist_id = match self.player.playlist().await {
             Some(id) => id,
             None => return,
         };
 
         match song {
             Some(QueueSong::Id(songid)) => {
-                if let Some(songpos) = self.song_id_to_pos(songid) {
+                if let Some(songpos) = self.song_id_to_pos(songid).await {
                     self.kodi_client
                         .send_method(PlayerOpen {
                             item: PlayerOpenItem::PlaylistAt {
@@ -548,15 +548,15 @@ impl CommandHandler for KodiProxyCommandHandler {
         song: QueueSong,
         time: Duration,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(playlist_id) = self.player.playlist() {
+        if let Some(playlist_id) = self.player.playlist().await {
             let position = match song {
-                QueueSong::Id(songid) => match self.song_id_to_pos(songid) {
+                QueueSong::Id(songid) => match self.song_id_to_pos(songid).await {
                     Some(songpos) => songpos,
                     None => return Ok(()),
                 },
                 QueueSong::Pos(songpos) => songpos,
             };
-            if self.player.position() != Some(position) {
+            if self.player.position().await != Some(position) {
                 self.kodi_client
                     .send_method(PlayerOpen {
                         item: PlayerOpenItem::PlaylistAt {

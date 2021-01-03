@@ -3,9 +3,10 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::MPDSubsystem;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch::Sender;
+use tokio::sync::RwLock;
 use tracing::{event, Level};
 
 pub(crate) struct KodiPlayer {
@@ -49,9 +50,9 @@ impl KodiPlayer {
                 Ok(props) => {
                     if props.kind == Some(PlayerType::Audio) {
                         self.id.store(current, Ordering::Relaxed);
-                        let changed =
-                            self.position() != props.position || self.speed() != props.speed;
-                        *self.properties.write().unwrap() = props;
+                        let changed = self.position().await != props.position
+                            || self.speed().await != props.speed;
+                        *self.properties.write().await = props;
                         if changed {
                             self.event_new(MPDSubsystem::Player);
                         }
@@ -77,15 +78,15 @@ impl KodiPlayer {
     }
 
     async fn refresh_playlist(&self) {
-        if let Some(playlist_id) = self.playlist() {
+        if let Some(playlist_id) = self.playlist().await {
             match self
                 .kodi_client
                 .send_method(PlaylistGetItems::all_properties(playlist_id))
                 .await
             {
                 Ok(PlaylistGetItemsResponse { items, .. }) => {
-                    if &***self.playlist_items.read().unwrap() != items {
-                        *self.playlist_items.write().unwrap() = Arc::new(items.into_boxed_slice());
+                    if &***self.playlist_items.read().await != items {
+                        *self.playlist_items.write().await = Arc::new(items.into_boxed_slice());
                         self.event_new(MPDSubsystem::Playlist);
                     }
                 }
@@ -103,36 +104,32 @@ impl KodiPlayer {
         self.id.load(Ordering::Relaxed)
     }
 
-    pub fn playlist(&self) -> Option<u8> {
-        self.properties.read().unwrap().playlistid
+    pub async fn playlist(&self) -> Option<u8> {
+        self.properties.read().await.playlistid
     }
 
-    pub fn position(&self) -> Option<usize> {
-        self.properties.read().unwrap().position
+    pub async fn position(&self) -> Option<usize> {
+        self.properties.read().await.position
     }
 
-    pub fn speed(&self) -> Option<i64> {
-        self.properties.read().unwrap().speed
+    pub async fn speed(&self) -> Option<i64> {
+        self.properties.read().await.speed
     }
 
-    pub fn shuffled(&self) -> Option<bool> {
-        self.properties.read().unwrap().shuffled
+    pub async fn shuffled(&self) -> Option<bool> {
+        self.properties.read().await.shuffled
     }
 
-    pub fn time(&self) -> Option<Duration> {
-        self.properties.read().unwrap().time.map(Duration::from)
+    pub async fn time(&self) -> Option<Duration> {
+        self.properties.read().await.time.map(Duration::from)
     }
 
-    pub fn totaltime(&self) -> Option<Duration> {
-        self.properties
-            .read()
-            .unwrap()
-            .totaltime
-            .map(Duration::from)
+    pub async fn totaltime(&self) -> Option<Duration> {
+        self.properties.read().await.totaltime.map(Duration::from)
     }
 
-    pub fn playlist_items(&self) -> Arc<Box<[kodi_jsonrpc_client::types::list::item::All]>> {
-        self.playlist_items.read().unwrap().clone()
+    pub async fn playlist_items(&self) -> Arc<Box<[kodi_jsonrpc_client::types::list::item::All]>> {
+        self.playlist_items.read().await.clone()
     }
 
     pub fn event_new(&self, event: MPDSubsystem) -> usize {
