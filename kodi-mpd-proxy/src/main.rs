@@ -154,7 +154,7 @@ impl CommandHandler for KodiProxyCommandHandler {
             .await?;
         let path = url
             .map(|url| url.to_file_path().unwrap())
-            .unwrap_or(PathBuf::new());
+            .unwrap_or_default();
         if path == Path::new("/") || path == Path::new("") {
             Ok(resp
                 .sources
