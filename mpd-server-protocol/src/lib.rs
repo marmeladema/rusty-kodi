@@ -73,6 +73,103 @@ impl MPDSubsystem {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum MPDTag {
+    Artist,
+    ArtistSort,
+    Album,
+    AlbumSort,
+    AlbumArtist,
+    AlbumArtistSort,
+    Title,
+    Track,
+    Name,
+    Genre,
+    Date,
+    OriginalDate,
+    Composer,
+    Performer,
+    Conductor,
+    Work,
+    Grouping,
+    Comment,
+    Disc,
+    Label,
+    MusicBrainzArtistId,
+    MusicBrainzAlbumId,
+    MusicBrainzAlbumArtistId,
+    MusicBrainzTrackId,
+    MusicBrainzReleaseTrackId,
+    MusicBrainzWorkId,
+}
+
+impl MPDTag {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        match bytes {
+            b"artist" => Some(Self::Artist),
+            b"artistsort" => Some(Self::ArtistSort),
+            b"album" => Some(Self::Album),
+            b"albumsort" => Some(Self::AlbumSort),
+            b"albumartist" => Some(Self::AlbumArtist),
+            b"albumartistsort" => Some(Self::AlbumArtistSort),
+            b"title" => Some(Self::Title),
+            b"track" => Some(Self::Track),
+            b"name" => Some(Self::Name),
+            b"genre" => Some(Self::Genre),
+            b"date" => Some(Self::Date),
+            b"originaldate" => Some(Self::OriginalDate),
+            b"composer" => Some(Self::Composer),
+            b"performer" => Some(Self::Performer),
+            b"conductor" => Some(Self::Conductor),
+            b"work" => Some(Self::Work),
+            b"Grouping" => Some(Self::Grouping),
+            b"Comment" => Some(Self::Comment),
+            b"Disc" => Some(Self::Disc),
+            b"Label" => Some(Self::Label),
+            b"musicbrainz_artistid" => Some(Self::MusicBrainzArtistId),
+            b"musicbrainz_albumid" => Some(Self::MusicBrainzAlbumId),
+            b"musicbrainz_albumartistid" => Some(Self::MusicBrainzAlbumArtistId),
+            b"musicbrainz_trackid" => Some(Self::MusicBrainzTrackId),
+            b"musicbrainz_releasetrackid" => Some(Self::MusicBrainzReleaseTrackId),
+            b"musicbrainz_workid" => Some(Self::MusicBrainzWorkId),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for MPDTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MPDTag::Artist => write!(f, "artist"),
+            MPDTag::ArtistSort => write!(f, "artistsort"),
+            MPDTag::Album => write!(f, "album"),
+            MPDTag::AlbumSort => write!(f, "albumsort"),
+            MPDTag::AlbumArtist => write!(f, "albumartist"),
+            MPDTag::AlbumArtistSort => write!(f, "albumartistsort"),
+            MPDTag::Title => write!(f, "title"),
+            MPDTag::Track => write!(f, "track"),
+            MPDTag::Name => write!(f, "name"),
+            MPDTag::Genre => write!(f, "genre"),
+            MPDTag::Date => write!(f, "date"),
+            MPDTag::OriginalDate => write!(f, "originaldate"),
+            MPDTag::Composer => write!(f, "composer"),
+            MPDTag::Performer => write!(f, "performer"),
+            MPDTag::Conductor => write!(f, "conductor"),
+            MPDTag::Work => write!(f, "work"),
+            MPDTag::Grouping => write!(f, "grouping"),
+            MPDTag::Comment => write!(f, "comment"),
+            MPDTag::Disc => write!(f, "disc"),
+            MPDTag::Label => write!(f, "label"),
+            MPDTag::MusicBrainzArtistId => write!(f, "musicbrainz_artistid"),
+            MPDTag::MusicBrainzAlbumId => write!(f, "musicbrainz_albumid"),
+            MPDTag::MusicBrainzAlbumArtistId => write!(f, "musicbrainz_albumartistid"),
+            MPDTag::MusicBrainzTrackId => write!(f, "musicbrainz_trackid"),
+            MPDTag::MusicBrainzReleaseTrackId => write!(f, "musicbrainz_releasetrackid"),
+            MPDTag::MusicBrainzWorkId => write!(f, "musicbrainz_workid"),
+        }
+    }
+}
+
 /// MPD state: play, stop, or pause
 #[derive(Copy, Clone, Debug)]
 pub enum MPDState {
@@ -375,6 +472,12 @@ enum TagTypes {
 }
 
 #[derive(Debug, PartialEq)]
+struct TagFilter {
+    tag: MPDTag,
+    value: BString,
+}
+
+#[derive(Debug, PartialEq)]
 enum MPDSubCommand {
     Add(Url),
     AddId(Url, Option<usize>),
@@ -389,6 +492,11 @@ enum MPDSubCommand {
         name: BString,
         args: BString,
         reason: CommandError,
+    },
+    List {
+        tag: MPDTag,
+        filters: Vec<TagFilter>,
+        groups: Vec<MPDTag>,
     },
     ListPlaylist(BString),
     ListPlaylistInfo(BString),
@@ -459,6 +567,7 @@ impl MPDSubCommand {
             Self::GetVol => b"getvol",
             Self::Idle(_) => b"idle",
             Self::Invalid { name, .. } => name,
+            Self::List { .. } => b"list",
             Self::ListPlaylist(_) => b"listplaylist",
             Self::ListPlaylistInfo(_) => b"listplaylistinfo",
             Self::ListPlaylists => b"listplaylists",
@@ -830,6 +939,7 @@ impl MPDSubCommand {
                 );
                 return Ok(Err(reason.clone()));
             }
+            Self::List { .. } => Ok(Ok(())),
             Self::ListPlaylist(_) => {
                 return Ok(Err(CommandError::NoExist(
                     "playlist does not exist".to_owned(),
@@ -1238,6 +1348,82 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             set = EnumSet::all();
         }
         MPDCommand::Sub(MPDSubCommand::Idle(set))
+    } else if name.as_ref() == b"list" {
+        let (mut arg, rest) = next_arg!(name, args, BString);
+        args = rest;
+        arg.make_ascii_lowercase();
+        let tag = match MPDTag::from_bytes(arg.as_slice()) {
+            Some(tag) => tag,
+            None => {
+                let msg = format!("Unknown tag type: {}", arg);
+                return MPDCommand::Sub(MPDSubCommand::Invalid {
+                    name: BString::from(name),
+                    args: BString::from(args),
+                    reason: CommandError::InvalidArgument(msg),
+                });
+            }
+        };
+        let mut filters = Vec::new();
+        while !args.is_empty() {
+            let (mut arg, rest) = next_arg!(name, args, BString);
+            arg.make_ascii_lowercase();
+            if arg.as_slice() == b"group" {
+                break;
+            }
+            args = rest;
+            let filter_tag = match MPDTag::from_bytes(arg.as_slice()) {
+                Some(tag) => tag,
+                None => {
+                    let msg = format!("Unknown filter type: {}", arg);
+                    return MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::InvalidArgument(msg),
+                    });
+                }
+            };
+            let (arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            filters.push(TagFilter {
+                tag: filter_tag,
+                value: arg,
+            });
+        }
+        let mut groups = Vec::new();
+        while !args.is_empty() {
+            let (mut arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            arg.make_ascii_lowercase();
+            if arg.as_slice() != b"group" {
+                let msg = format!("Unknown filter type: {}", arg);
+                return MPDCommand::Sub(MPDSubCommand::Invalid {
+                    name: BString::from(name),
+                    args: BString::from(args),
+                    reason: CommandError::InvalidArgument(msg),
+                });
+            }
+
+            let (mut arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            arg.make_ascii_lowercase();
+            let tag = match MPDTag::from_bytes(arg.as_slice()) {
+                Some(tag) => tag,
+                None => {
+                    let msg = format!("Unknown tag type: {}", arg);
+                    return MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::InvalidArgument(msg),
+                    });
+                }
+            };
+            groups.push(tag);
+        }
+        MPDCommand::Sub(MPDSubCommand::List {
+            tag,
+            filters,
+            groups,
+        })
     } else if name.as_ref() == b"listplaylist" {
         let (playlist, rest) = next_arg!(name, args, BString);
         args = rest;
