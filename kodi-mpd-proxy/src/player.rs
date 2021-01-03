@@ -12,7 +12,8 @@ use tracing::{event, Level};
 pub(crate) struct KodiPlayer {
     kodi_client: KodiClient,
     id: AtomicU8,
-    properties: RwLock<kodi_jsonrpc_client::types::player::property::Value>,
+    app_properties: RwLock<kodi_jsonrpc_client::types::application::property::Value>,
+    player_properties: RwLock<kodi_jsonrpc_client::types::player::property::Value>,
     playlist_items: RwLock<Arc<Box<[kodi_jsonrpc_client::types::list::item::All]>>>,
     subsystem_events: EnumMap<MPDSubsystem, AtomicUsize>,
     subsystem_notifier: Sender<usize>,
@@ -24,7 +25,8 @@ impl KodiPlayer {
         Self {
             kodi_client,
             id: AtomicU8::new(0),
-            properties: RwLock::new(Default::default()),
+            app_properties: RwLock::new(Default::default()),
+            player_properties: RwLock::new(Default::default()),
             playlist_items: RwLock::new(Arc::new(Vec::new().into_boxed_slice())),
             subsystem_events: EnumMap::default(),
             subsystem_notifier,
@@ -34,6 +36,26 @@ impl KodiPlayer {
 
     pub async fn refresh(&self) {
         use kodi_jsonrpc_client::types::player::Type as PlayerType;
+
+        match self
+            .kodi_client
+            .send_method(ApplicationGetProperties::all())
+            .await
+        {
+            Ok(props) => {
+                let changed =
+                    self.volume().await != props.volume || self.muted().await != props.muted;
+                *self.app_properties.write().await = props;
+                if changed {
+                    self.event_new(MPDSubsystem::Mixer);
+                }
+            }
+            Err(err) => event!(
+                Level::ERROR,
+                "Count not retrieve properties of application: {}",
+                err
+            ),
+        }
 
         let mut ids = &mut [0u8, 1u8, 2u8][..];
 
@@ -52,7 +74,7 @@ impl KodiPlayer {
                         self.id.store(current, Ordering::Relaxed);
                         let changed = self.position().await != props.position
                             || self.speed().await != props.speed;
-                        *self.properties.write().await = props;
+                        *self.player_properties.write().await = props;
                         if changed {
                             self.event_new(MPDSubsystem::Player);
                         }
@@ -100,32 +122,44 @@ impl KodiPlayer {
         }
     }
 
+    pub async fn volume(&self) -> Option<u8> {
+        self.app_properties.read().await.volume
+    }
+
+    pub async fn muted(&self) -> Option<bool> {
+        self.app_properties.read().await.muted
+    }
+
     pub fn id(&self) -> u8 {
         self.id.load(Ordering::Relaxed)
     }
 
     pub async fn playlist(&self) -> Option<u8> {
-        self.properties.read().await.playlistid
+        self.player_properties.read().await.playlistid
     }
 
     pub async fn position(&self) -> Option<usize> {
-        self.properties.read().await.position
+        self.player_properties.read().await.position
     }
 
     pub async fn speed(&self) -> Option<i64> {
-        self.properties.read().await.speed
+        self.player_properties.read().await.speed
     }
 
     pub async fn shuffled(&self) -> Option<bool> {
-        self.properties.read().await.shuffled
+        self.player_properties.read().await.shuffled
     }
 
     pub async fn time(&self) -> Option<Duration> {
-        self.properties.read().await.time.map(Duration::from)
+        self.player_properties.read().await.time.map(Duration::from)
     }
 
     pub async fn totaltime(&self) -> Option<Duration> {
-        self.properties.read().await.totaltime.map(Duration::from)
+        self.player_properties
+            .read()
+            .await
+            .totaltime
+            .map(Duration::from)
     }
 
     pub async fn playlist_items(&self) -> Arc<Box<[kodi_jsonrpc_client::types::list::item::All]>> {

@@ -40,7 +40,7 @@ pub mod application {
             pub tagversion: Option<String>,
         }
 
-        #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+        #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
         pub struct Value {
             pub language: Option<String>,
             pub muted: Option<bool>,
