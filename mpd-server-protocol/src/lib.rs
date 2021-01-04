@@ -481,6 +481,11 @@ pub trait CommandHandler {
         groups: &[MPDTag],
     ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
 
+    async fn library_find(
+        &mut self,
+        filters: &[TagFilter],
+    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
+
     async fn idle(
         &mut self,
         wanted: EnumSet<MPDSubsystem>,
@@ -511,6 +516,9 @@ enum MPDSubCommand {
     CurrentSong,
     Decoders,
     Delete(RangeInclusive<usize>),
+    Find {
+        filters: Vec<TagFilter>,
+    },
     GetVol,
     Idle(EnumSet<MPDSubsystem>),
     Invalid {
@@ -589,6 +597,7 @@ impl MPDSubCommand {
             Self::CurrentSong => b"currentsong",
             Self::Decoders => b"decoders",
             Self::Delete(_) => b"delete",
+            Self::Find { .. } => b"find",
             Self::GetVol => b"getvol",
             Self::Idle(_) => b"idle",
             Self::Invalid { name, .. } => name,
@@ -922,6 +931,15 @@ async fn list(
     }
 }
 
+async fn find(
+    stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
+    handler: &mut impl CommandHandler,
+    filters: &[TagFilter],
+    buf: &mut Vec<u8>,
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(Ok(()))
+}
+
 impl MPDSubCommand {
     async fn process(
         &self,
@@ -944,6 +962,7 @@ impl MPDSubCommand {
                 handler.queue_delete(range.clone()).await?;
                 Ok(Ok(()))
             }
+            Self::Find { filters } => find(stream, handler, filters, buf).await,
             Self::GetVol => getvol(stream, handler, buf).await,
             Self::Idle(subsystems) => {
                 loop {
@@ -1373,6 +1392,34 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         args = rest;
         let range = RangeInclusive::from_bytes(arg.as_slice()).unwrap().0;
         MPDCommand::Sub(MPDSubCommand::Delete(range))
+    } else if name.as_ref() == b"find" {
+        let mut filters = Vec::new();
+        while !args.is_empty() {
+            let (mut arg, rest) = next_arg!(name, args, BString);
+            arg.make_ascii_lowercase();
+            if arg.as_slice() == b"sort" || arg.as_slice() == b"window" {
+                break;
+            }
+            args = rest;
+            let filter_tag = match MPDTag::from_bytes(arg.as_slice()) {
+                Some(tag) => tag,
+                None => {
+                    let msg = format!("Unknown filter type: {}", arg);
+                    return MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::InvalidArgument(msg),
+                    });
+                }
+            };
+            let (arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            filters.push(TagFilter {
+                tag: filter_tag,
+                value: Vec::from(arg).into_string_lossy(),
+            });
+        }
+        MPDCommand::Sub(MPDSubCommand::Find { filters })
     } else if name.as_ref() == b"idle" {
         let mut set = EnumSet::empty();
         while !args.is_empty() {
