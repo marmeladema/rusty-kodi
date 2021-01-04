@@ -154,7 +154,7 @@ impl<M: KodiMethod> KodiRequest<M> {
                 id: resp.id,
                 code,
                 message,
-            })?,
+            }),
         }
     }
 }
