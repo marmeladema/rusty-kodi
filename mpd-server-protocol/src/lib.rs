@@ -980,12 +980,8 @@ impl MPDSubCommand {
                     }
                 }
             }
-            Self::Invalid { name, args, reason } => {
-                eprintln!(
-                    "Trying to process invalid command {:?} with {} args",
-                    String::from_utf8_lossy(name),
-                    args.len()
-                );
+            Self::Invalid { reason, .. } => {
+                event!(Level::ERROR, "Command::{:#?}", self);
                 return Ok(Err(reason.clone()));
             }
             Self::List {
