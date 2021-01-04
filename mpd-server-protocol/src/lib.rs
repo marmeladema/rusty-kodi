@@ -379,15 +379,19 @@ impl QueueSong {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LibraryEntry {
     pub artist: Option<String>,
+    pub album: Option<String>,
 }
 
 impl std::fmt::Display for LibraryEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(artist) = self.artist.as_ref() {
             writeln!(f, "Artist: {}", artist)?;
+        }
+        if let Some(album) = self.album.as_ref() {
+            writeln!(f, "Album: {}", album)?;
         }
         Ok(())
     }

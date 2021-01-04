@@ -66,9 +66,58 @@ define_method!(
 
 // AudioLibrary.GetAlbums
 
-// AudioLibrary.GetArtistDetails
+#[derive(Debug, serde::Serialize)]
+pub enum AudioLibraryGetAlbumsFilterSimple {
+    Genre(String),
+    GenreId(usize),
+    Artist(String),
+    ArtistId(usize),
+}
 
-// AudioLibrary.GetArtists
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+pub enum AudioLibraryGetAlbumsFilter {
+    Simple(AudioLibraryGetAlbumsFilterSimple),
+    Complex(crate::types::list::filter::Albums),
+}
+
+define_method!(
+    #[doc="Retrieve all albums from specified artist (and role) or that has songs of the specified genre"]
+    AudioLibrary.GetAlbums {
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::audio::fields::Album>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limits: Option<crate::types::list::Limits>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sort: Option<crate::types::list::Sort>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filter: Option<AudioLibraryGetAlbumsFilter>,
+        includesingles: bool,
+        allroles: bool
+    } -> AudioLibraryGetAlbumsResponse
+);
+
+impl AudioLibraryGetAlbums {
+    pub fn all_properties() -> Self {
+        Self {
+            properties: enumset::EnumSet::all(),
+            limits: None,
+            sort: None,
+            filter: None,
+            includesingles: false,
+            allroles: false,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AudioLibraryGetAlbumsResponse {
+    #[serde(default)]
+    pub albums: Vec<crate::types::audio::details::Album>,
+    pub limits: crate::types::list::LimitsReturned,
+}
+
+// AudioLibrary.GetArtistDetails
 
 #[derive(Debug, serde::Serialize)]
 pub enum AudioLibraryGetArtistsFilterSimple {
@@ -93,6 +142,7 @@ pub enum AudioLibraryGetArtistsFilter {
 define_method!(
     #[doc="Retrieve all artists. For backward compatibility by default this implicity does not include those that only contribute other roles, however absolutely all artists can be returned using allroles=true"]
     AudioLibrary.GetArtists {
+        #[serde(skip_serializing_if = "Option::is_none")]
         albumartistsonly: Option<bool>,
         #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
         properties: enumset::EnumSet<crate::types::audio::fields::Artist>,

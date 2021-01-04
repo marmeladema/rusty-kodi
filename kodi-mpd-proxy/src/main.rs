@@ -645,6 +645,20 @@ impl CommandHandler for KodiProxyCommandHandler {
             return Err("groups are not supported".to_string().into());
         }
         match tag {
+            MPDTag::Album => {
+                let albums = self
+                    .kodi_client
+                    .send_method(AudioLibraryGetAlbums::all_properties())
+                    .await?
+                    .albums;
+                Ok(albums
+                    .into_iter()
+                    .map(|album| LibraryEntry {
+                        album: Some(album.label),
+                        ..Default::default()
+                    })
+                    .collect())
+            }
             MPDTag::Artist => {
                 let artists = self
                     .kodi_client
@@ -655,6 +669,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                     .into_iter()
                     .map(|artist| LibraryEntry {
                         artist: Some(artist.label),
+                        ..Default::default()
                     })
                     .collect())
             }

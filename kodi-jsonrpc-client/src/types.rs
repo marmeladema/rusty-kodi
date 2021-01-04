@@ -54,6 +54,48 @@ pub mod application {
 pub mod audio {
     pub mod details {
         #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+        pub struct Album {
+            pub label: String,
+            pub fanart: Option<String>,
+            pub thumbnail: Option<String>,
+            pub art: Option<crate::types::media::Artwork>,
+            pub dateadded: Option<String>,
+            #[serde(default)]
+            pub genre: Vec<String>,
+            #[serde(default)]
+            pub artist: Vec<String>,
+            #[serde(default)]
+            pub artistid: Vec<isize>,
+            pub displayartist: Option<String>,
+            pub musicbrainzalbumartistid: Option<Vec<String>>,
+            // pub rating: Option<f64>,
+            pub sortartist: Option<String>,
+            pub title: Option<String>,
+            pub userrating: Option<usize>,
+            pub votes: Option<usize>,
+            pub year: Option<usize>,
+            pub albumid: usize,
+            pub albumlabel: Option<String>,
+            pub compilation: Option<bool>,
+            pub description: Option<String>,
+            pub lastplayed: Option<String>,
+            pub mood: Option<Vec<String>>,
+            pub musicbrainzalbumid: Option<String>,
+            pub musicbrainzreleasegroupid: Option<String>,
+            pub playcount: Option<usize>,
+            // pub releasetype: Option<Audio.Album.ReleaseType>,
+            // pub songgenres: Option<Audio.Details.Genres>,
+            #[serde(default)]
+            pub sourceid: Vec<isize>,
+            #[serde(default)]
+            pub style: Vec<String>,
+            #[serde(default)]
+            pub theme: Vec<String>,
+            #[serde(rename = "type")]
+            pub kind: Option<String>,
+        }
+
+        #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
         pub struct Artist {
             pub label: String,
             pub fanart: Option<String>,
@@ -96,6 +138,42 @@ pub mod audio {
 
     pub mod fields {
         use enumset::EnumSetType;
+
+        /// Requesting the songgenres, artistid and/or sourceid fields will result in increased response times
+        #[derive(Debug, EnumSetType, serde::Deserialize, serde::Serialize)]
+        #[enumset(serialize_as_list)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Album {
+            Title,
+            Description,
+            Artist,
+            Genre,
+            Theme,
+            Mood,
+            Style,
+            Type,
+            AlbumLabel,
+            Rating,
+            Votes,
+            UserRating,
+            Year,
+            MusicBrainzAlbumId,
+            MusicBrainzAlbumartistId,
+            FanArt,
+            Thumbnail,
+            PlayCount,
+            ArtistId,
+            DisplayArtist,
+            Compilation,
+            ReleaseType,
+            DateAdded,
+            SortArtist,
+            MusicBrainzReleaseGroupId,
+            SongGenres,
+            Art,
+            Lastplayed,
+            SourceId,
+        }
 
         /// Requesting the (song)genreid/genre, roleid/role or sourceid fields will result in increased response times
         #[derive(Debug, EnumSetType, serde::Deserialize, serde::Serialize)]
@@ -420,6 +498,37 @@ pub mod list {
         pub mod fields {
             #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
             #[serde(rename_all = "lowercase")]
+            pub enum Albums {
+                Genre,
+                Source,
+                Album,
+                Artist,
+                AlbumArtist,
+                Year,
+                Review,
+                Themes,
+                Moods,
+                Styles,
+                Compilation,
+                Type,
+                Label,
+                Rating,
+                UserRating,
+                PlayCount,
+                LastPlayed,
+                Path,
+                Playlist,
+                VirtualFolder,
+            }
+
+            impl Default for Albums {
+                fn default() -> Self {
+                    Self::Genre
+                }
+            }
+
+            #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+            #[serde(rename_all = "lowercase")]
             pub enum Artists {
                 Artist,
                 Source,
@@ -458,6 +567,13 @@ pub mod list {
             }
 
             #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+            pub struct Albums {
+                pub operator: crate::types::list::filter::Operators,
+                pub value: Value,
+                pub field: crate::types::list::filter::fields::Albums,
+            }
+
+            #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
             pub struct Artists {
                 pub operator: crate::types::list::filter::Operators,
                 pub value: Value,
@@ -489,6 +605,14 @@ pub mod list {
             fn default() -> Self {
                 Self::Contains
             }
+        }
+
+        #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Albums {
+            And(Vec<Albums>),
+            Or(Vec<Albums>),
+            Rule(crate::types::list::filter::rule::Albums),
         }
 
         #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
