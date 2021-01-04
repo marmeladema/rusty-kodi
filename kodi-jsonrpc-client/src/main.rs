@@ -81,5 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         );
     }
 
+    let resp = client
+        .send_method(AudioLibraryGetArtists::all_properties())
+        .await?;
+    event!(Level::INFO, "AudioLibrary.GetArtists:\n{:#?}", resp.artists);
+
     Ok(())
 }

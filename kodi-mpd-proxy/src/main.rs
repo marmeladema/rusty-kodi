@@ -7,8 +7,8 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, File, MPDState, MPDStatus, MPDSubsystem, QueueEntry, QueueSong,
-    Server, Url,
+    CommandHandler, DirEntry, File, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, MPDTag,
+    QueueEntry, QueueSong, Server, TagFilter, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -630,6 +630,36 @@ impl CommandHandler for KodiProxyCommandHandler {
             })
             .await?;
         Ok(())
+    }
+
+    async fn library_list(
+        &mut self,
+        tag: MPDTag,
+        filters: &[TagFilter],
+        groups: &[MPDTag],
+    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
+        if !filters.is_empty() {
+            return Err("filters are not supported".to_string().into());
+        }
+        if !groups.is_empty() {
+            return Err("groups are not supported".to_string().into());
+        }
+        match tag {
+            MPDTag::Artist => {
+                let artists = self
+                    .kodi_client
+                    .send_method(AudioLibraryGetArtists::all_properties())
+                    .await?
+                    .artists;
+                Ok(artists
+                    .into_iter()
+                    .map(|artist| LibraryEntry {
+                        artist: Some(artist.label),
+                    })
+                    .collect())
+            }
+            _ => Err(format!("unsupported tag: {}", tag).into()),
+        }
     }
 
     async fn idle(

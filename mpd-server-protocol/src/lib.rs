@@ -379,6 +379,20 @@ impl QueueSong {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct LibraryEntry {
+    pub artist: Option<String>,
+}
+
+impl std::fmt::Display for LibraryEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(artist) = self.artist.as_ref() {
+            writeln!(f, "Artist: {}", artist)?;
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 pub trait CommandHandler {
     // fn url_parse(input: &str) -> Url;
@@ -456,6 +470,13 @@ pub trait CommandHandler {
         rescan: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
+    async fn library_list(
+        &mut self,
+        tag: MPDTag,
+        filters: &[TagFilter],
+        groups: &[MPDTag],
+    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
+
     async fn idle(
         &mut self,
         wanted: EnumSet<MPDSubsystem>,
@@ -472,7 +493,7 @@ enum TagTypes {
 }
 
 #[derive(Debug, PartialEq)]
-struct TagFilter {
+pub struct TagFilter {
     tag: MPDTag,
     value: BString,
 }
@@ -873,6 +894,30 @@ async fn commands(
     Ok(Ok(()))
 }
 
+async fn list(
+    stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
+    handler: &mut impl CommandHandler,
+    tag: MPDTag,
+    filters: &[TagFilter],
+    groups: &[MPDTag],
+    buf: &mut Vec<u8>,
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
+    match handler.library_list(tag, filters, groups).await {
+        Ok(items) => {
+            buf.clear();
+            let mut cursor = Cursor::new(&mut *buf);
+            let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+            for item in items {
+                write!(writer, "{}", item).unwrap();
+            }
+            let data = &cursor.get_ref()[..(cursor.position() as usize)];
+            stream.write_all(data).await?;
+            Ok(Ok(()))
+        }
+        Err(err) => Ok(Err(CommandError::Unknown(err.to_string()))),
+    }
+}
+
 impl MPDSubCommand {
     async fn process(
         &self,
@@ -939,7 +984,11 @@ impl MPDSubCommand {
                 );
                 return Ok(Err(reason.clone()));
             }
-            Self::List { .. } => Ok(Ok(())),
+            Self::List {
+                tag,
+                filters,
+                groups,
+            } => list(stream, handler, *tag, filters, groups, buf).await,
             Self::ListPlaylist(_) => {
                 return Ok(Err(CommandError::NoExist(
                     "playlist does not exist".to_owned(),

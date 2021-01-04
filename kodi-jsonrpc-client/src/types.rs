@@ -51,6 +51,85 @@ pub mod application {
     }
 }
 
+pub mod audio {
+    pub mod details {
+        #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+        pub struct Artist {
+            pub label: String,
+            pub fanart: Option<String>,
+            pub thumbnail: Option<String>,
+            pub art: Option<crate::types::media::Artwork>,
+            pub dateadded: Option<String>,
+            #[serde(default)]
+            pub genre: Vec<String>,
+            pub artist: String,
+            pub artistid: usize,
+            pub born: Option<String>,
+            #[serde(default)]
+            pub compilationartist: bool,
+            pub description: Option<String>,
+            pub died: Option<String>,
+            pub disambiguation: Option<String>,
+            pub disbanded: Option<String>,
+            pub formed: Option<String>,
+            pub gender: Option<String>,
+            #[serde(default)]
+            pub instrument: Vec<String>,
+            #[serde(default)]
+            pub isalbumartist: bool,
+            #[serde(default)]
+            pub mood: Vec<String>,
+            pub musicbrainzartistid: Option<Vec<String>>,
+            //pub roles: Option<Audio.Artist.Roles>,
+            //pub songgenres: Option<Audio.Details.Genres>,
+            pub sortname: Option<String>,
+            #[serde(default)]
+            pub sourceid: Vec<isize>,
+            #[serde(default)]
+            pub style: Vec<String>,
+            #[serde(rename = "type")]
+            pub kind: Option<String>,
+            #[serde(default)]
+            pub yearsactive: Vec<String>,
+        }
+    }
+
+    pub mod fields {
+        use enumset::EnumSetType;
+
+        /// Requesting the (song)genreid/genre, roleid/role or sourceid fields will result in increased response times
+        #[derive(Debug, EnumSetType, serde::Deserialize, serde::Serialize)]
+        #[enumset(serialize_as_list)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Artist {
+            Instrument,
+            Style,
+            Mood,
+            Born,
+            Formed,
+            Description,
+            Genre,
+            Died,
+            Disbanded,
+            YearsActive,
+            MusicBrainzArtistId,
+            FanArt,
+            Thumbnail,
+            CompilationArtist,
+            DateAdded,
+            Roles,
+            SongGenres,
+            IsAlbumArtist,
+            SortName,
+            Type,
+            Gender,
+            Disambiguation,
+            Art,
+            SourceId,
+        }
+    }
+}
+
 pub mod files {
     #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
     #[serde(rename_all = "lowercase")]
@@ -337,8 +416,92 @@ pub mod list {
         }
     }
 
-    pub mod item {
+    pub mod filter {
+        pub mod fields {
+            #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+            #[serde(rename_all = "lowercase")]
+            pub enum Artists {
+                Artist,
+                Source,
+                Genre,
+                Moods,
+                Styles,
+                Instruments,
+                Biography,
+                ArtistType,
+                Gender,
+                Disambiguation,
+                Born,
+                BandFormed,
+                Disbanded,
+                Died,
+                Role,
+                Path,
+                Playlist,
+                VirtualFolder,
+            }
+
+            impl Default for Artists {
+                fn default() -> Self {
+                    Self::Artist
+                }
+            }
+        }
+
+        pub mod rule {
+            #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+            #[serde(rename_all = "lowercase")]
+            #[serde(untagged)]
+            pub enum Value {
+                One(String),
+                Many(Vec<String>),
+            }
+
+            #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+            pub struct Artists {
+                pub operator: crate::types::list::filter::Operators,
+                pub value: Value,
+                pub field: crate::types::list::filter::fields::Artists,
+            }
+        }
+
+        #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Operators {
+            Contains,
+            DoesNotContain,
+            Is,
+            IsNot,
+            StartsWith,
+            EndsWith,
+            GreaterThan,
+            LessThan,
+            After,
+            Before,
+            InTheLast,
+            NotInTheLast,
+            True,
+            False,
+            Between,
+        }
+
+        impl Default for Operators {
+            fn default() -> Self {
+                Self::Contains
+            }
+        }
+
         #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Artists {
+            And(Vec<Artists>),
+            Or(Vec<Artists>),
+            Rule(crate::types::list::filter::rule::Artists),
+        }
+    }
+
+    pub mod item {
+        #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
         #[serde(rename_all = "lowercase")]
         pub enum ItemKind {
             Unknown,
