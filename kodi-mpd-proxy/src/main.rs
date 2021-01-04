@@ -653,13 +653,13 @@ impl CommandHandler for KodiProxyCommandHandler {
                         MPDTag::Album => {
                             albums = albums
                                 .into_iter()
-                                .filter(|album| album.label == filter.value)
+                                .filter(|details| details.label == filter.value)
                                 .collect();
                         }
                         MPDTag::Artist => {
                             albums = albums
                                 .into_iter()
-                                .filter(|album| album.artist.contains(&filter.value))
+                                .filter(|details| details.artist.contains(&filter.value))
                                 .collect();
                         }
                         _ => {
@@ -677,24 +677,30 @@ impl CommandHandler for KodiProxyCommandHandler {
                     })
                     .collect())
             }
-            MPDTag::Artist => {
+            MPDTag::Artist | MPDTag::AlbumArtist => {
                 let mut artists = self
                     .kodi_client
                     .send_method(AudioLibraryGetArtists::all_properties())
                     .await?
                     .artists;
+                if tag == MPDTag::AlbumArtist {
+                    artists = artists
+                        .into_iter()
+                        .filter(|details| details.isalbumartist)
+                        .collect();
+                }
                 for filter in filters {
                     match filter.tag {
                         MPDTag::Album => {
                             artists = artists
                                 .into_iter()
-                                .filter(|album| album.label == filter.value)
+                                .filter(|details| details.label == filter.value)
                                 .collect();
                         }
                         MPDTag::Artist => {
                             artists = artists
                                 .into_iter()
-                                .filter(|album| album.artist.contains(&filter.value))
+                                .filter(|details| details.artist.contains(&filter.value))
                                 .collect();
                         }
                         _ => {
