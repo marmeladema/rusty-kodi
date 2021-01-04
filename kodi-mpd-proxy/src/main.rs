@@ -638,19 +638,37 @@ impl CommandHandler for KodiProxyCommandHandler {
         filters: &[TagFilter],
         groups: &[MPDTag],
     ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
-        if !filters.is_empty() {
-            return Err("filters are not supported".to_string().into());
-        }
         if !groups.is_empty() {
             return Err("groups are not supported".to_string().into());
         }
         match tag {
             MPDTag::Album => {
-                let albums = self
+                let mut albums = self
                     .kodi_client
                     .send_method(AudioLibraryGetAlbums::all_properties())
                     .await?
                     .albums;
+                for filter in filters {
+                    match filter.tag {
+                        MPDTag::Album => {
+                            albums = albums
+                                .into_iter()
+                                .filter(|album| album.label == filter.value)
+                                .collect();
+                        }
+                        MPDTag::Artist => {
+                            albums = albums
+                                .into_iter()
+                                .filter(|album| album.artist.contains(&filter.value))
+                                .collect();
+                        }
+                        _ => {
+                            return Err(
+                                format!("filtering on tag '{}' not supported", filter.tag).into()
+                            )
+                        }
+                    }
+                }
                 Ok(albums
                     .into_iter()
                     .map(|album| LibraryEntry {
@@ -660,11 +678,32 @@ impl CommandHandler for KodiProxyCommandHandler {
                     .collect())
             }
             MPDTag::Artist => {
-                let artists = self
+                let mut artists = self
                     .kodi_client
                     .send_method(AudioLibraryGetArtists::all_properties())
                     .await?
                     .artists;
+                for filter in filters {
+                    match filter.tag {
+                        MPDTag::Album => {
+                            artists = artists
+                                .into_iter()
+                                .filter(|album| album.label == filter.value)
+                                .collect();
+                        }
+                        MPDTag::Artist => {
+                            artists = artists
+                                .into_iter()
+                                .filter(|album| album.artist.contains(&filter.value))
+                                .collect();
+                        }
+                        _ => {
+                            return Err(
+                                format!("filtering on tag '{}' not supported", filter.tag).into()
+                            )
+                        }
+                    }
+                }
                 Ok(artists
                     .into_iter()
                     .map(|artist| LibraryEntry {

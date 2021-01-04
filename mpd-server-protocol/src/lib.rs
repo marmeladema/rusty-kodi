@@ -498,8 +498,8 @@ enum TagTypes {
 
 #[derive(Debug, PartialEq)]
 pub struct TagFilter {
-    tag: MPDTag,
-    value: BString,
+    pub tag: MPDTag,
+    pub value: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1439,7 +1439,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             args = rest;
             filters.push(TagFilter {
                 tag: filter_tag,
-                value: arg,
+                value: Vec::from(arg).into_string_lossy(),
             });
         }
         let mut groups = Vec::new();
