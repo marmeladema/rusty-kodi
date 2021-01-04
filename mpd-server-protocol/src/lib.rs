@@ -1414,21 +1414,37 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         };
         let mut filters = Vec::new();
         while !args.is_empty() {
-            let (mut arg, rest) = next_arg!(name, args, BString);
-            arg.make_ascii_lowercase();
-            if arg.as_slice() == b"group" {
+            let (arg, rest) = next_arg!(name, args, BString);
+            let mut lowered_arg = arg.clone();
+            lowered_arg.make_ascii_lowercase();
+            if lowered_arg.as_slice() == b"group" {
                 break;
             }
             args = rest;
-            let filter_tag = match MPDTag::from_bytes(arg.as_slice()) {
+            let filter_tag = match MPDTag::from_bytes(lowered_arg.as_slice()) {
                 Some(tag) => tag,
                 None => {
-                    let msg = format!("Unknown filter type: {}", arg);
-                    return MPDCommand::Sub(MPDSubCommand::Invalid {
-                        name: BString::from(name),
-                        args: BString::from(args),
-                        reason: CommandError::InvalidArgument(msg),
-                    });
+                    if !filters.is_empty() || !args.is_empty() {
+                        let msg = format!("Unknown filter type: {}", arg);
+                        return MPDCommand::Sub(MPDSubCommand::Invalid {
+                            name: BString::from(name),
+                            args: BString::from(args),
+                            reason: CommandError::InvalidArgument(msg),
+                        });
+                    } else if tag != MPDTag::Album {
+                        let msg = "should be \"Album\" for 3 arguments".to_string();
+                        return MPDCommand::Sub(MPDSubCommand::Invalid {
+                            name: BString::from(name),
+                            args: BString::from(args),
+                            reason: CommandError::InvalidArgument(msg),
+                        });
+                    } else {
+                        filters.push(TagFilter {
+                            tag: MPDTag::Artist,
+                            value: Vec::from(arg).into_string_lossy(),
+                        });
+                        continue;
+                    }
                 }
             };
             let (arg, rest) = next_arg!(name, args, BString);
