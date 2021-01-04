@@ -297,30 +297,31 @@ pub struct File {
     pub genre: Vec<String>,
 }
 
-impl File {
-    fn write_to(&self, writer: &mut (dyn std::io::Write + Send + Sync)) {
+impl std::fmt::Display for File {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(duration) = self.duration {
-            writeln!(writer, "duration: {}", duration).unwrap();
-            writeln!(writer, "Time: {}", duration).unwrap();
+            writeln!(f, "duration: {}", duration)?;
+            writeln!(f, "Time: {}", duration)?;
         }
         for artist in &self.artist {
-            writeln!(writer, "Artist: {}", artist).unwrap();
+            writeln!(f, "Artist: {}", artist)?;
         }
         if let Some(ref album) = self.album {
-            writeln!(writer, "Album: {}", album).unwrap();
+            writeln!(f, "Album: {}", album)?;
         }
         if let Some(ref title) = self.title {
-            writeln!(writer, "Title: {}", title).unwrap();
+            writeln!(f, "Title: {}", title)?;
         }
         if let Some(track) = self.track {
-            writeln!(writer, "Track: {}", track).unwrap();
+            writeln!(f, "Track: {}", track)?;
         }
         if let Some(year) = self.year {
-            writeln!(writer, "Date: {}", year).unwrap();
+            writeln!(f, "Date: {}", year)?;
         }
         for genre in &self.genre {
-            writeln!(writer, "Genre: {}", genre).unwrap();
+            writeln!(f, "Genre: {}", genre)?;
         }
+        Ok(())
     }
 }
 
@@ -330,18 +331,23 @@ pub struct DirEntry {
     pub last_modified: Option<SystemTime>,
 }
 
-impl DirEntry {
-    fn write_to(&self, writer: &mut (dyn std::io::Write + Send + Sync)) {
+impl std::fmt::Display for DirEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(ref file) = self.file {
-            writer.write_all(b"file: ").unwrap();
-            writer.write_all(self.path.as_os_str().as_bytes()).unwrap();
-            writer.write_all(b"\n").unwrap();
-            file.write_to(writer);
+            writeln!(
+                f,
+                "file: {}",
+                <&BStr>::from(self.path.as_os_str().as_bytes())
+            )?;
+            write!(f, "{}", file)?;
         } else {
-            writer.write_all(b"directory: ").unwrap();
-            writer.write_all(self.path.as_os_str().as_bytes()).unwrap();
-            writer.write_all(b"\n").unwrap();
+            writeln!(
+                f,
+                "directory: {}",
+                <&BStr>::from(self.path.as_os_str().as_bytes())
+            )?;
         }
+        Ok(())
     }
 }
 
@@ -352,14 +358,17 @@ pub struct QueueEntry {
     pub position: usize,
 }
 
-impl QueueEntry {
-    fn write_to(&self, writer: &mut (dyn std::io::Write + Send + Sync)) {
-        writer.write_all(b"file: ").unwrap();
-        writer.write_all(self.path.as_os_str().as_bytes()).unwrap();
-        writer.write_all(b"\n").unwrap();
-        self.file.write_to(writer);
-        writeln!(writer, "Pos: {}", self.position).unwrap();
-        writeln!(writer, "Id: {}", self.id).unwrap();
+impl std::fmt::Display for QueueEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "file: {}",
+            <&BStr>::from(self.path.as_os_str().as_bytes())
+        )?;
+        write!(f, "{}", self.file)?;
+        writeln!(f, "Pos: {}", self.position)?;
+        writeln!(f, "Id: {}", self.id)?;
+        Ok(())
     }
 }
 
@@ -684,7 +693,7 @@ async fn lsinfo(
         Err(err) => return Ok(Err(CommandError::NoExist(err.to_string()))),
     };
     for entry in entries {
-        entry.write_to(writer);
+        write!(writer, "{}", entry)?;
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
@@ -700,7 +709,7 @@ async fn currentsong(
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
     if let Some(queue) = handler.queue_current().await {
-        queue.write_to(writer);
+        write!(writer, "{}", queue)?;
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
@@ -732,11 +741,11 @@ async fn playlistid(
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
     if let Some(id) = id {
         if let Some(item) = handler.queue_get(id.as_bstr()).await {
-            item.write_to(writer);
+            write!(writer, "{}", item)?;
         }
     } else {
         for item in handler.queue_list(None).await {
-            item.write_to(writer);
+            write!(writer, "{}", item)?;
         }
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
@@ -754,7 +763,7 @@ async fn playlistinfo(
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
     for item in handler.queue_list(range).await {
-        item.write_to(writer);
+        write!(writer, "{}", item)?;
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
     stream.write_all(data).await?;
