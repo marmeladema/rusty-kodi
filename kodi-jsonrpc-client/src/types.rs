@@ -134,6 +134,58 @@ pub mod audio {
             #[serde(default)]
             pub yearsactive: Vec<String>,
         }
+
+        #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+        pub struct Song {
+            pub label: String,
+            pub fanart: Option<String>,
+            pub thumbnail: Option<String>,
+            pub art: Option<crate::types::media::Artwork>,
+            pub dateadded: Option<String>,
+            #[serde(default)]
+            pub genre: Vec<String>,
+            #[serde(default)]
+            pub artist: Vec<String>,
+            #[serde(default)]
+            pub artistid: Vec<isize>,
+            pub displayartist: Option<String>,
+            pub musicbrainzalbumartistid: Option<Vec<String>>,
+            // pub rating: Option<f64>,
+            pub sortartist: Option<String>,
+            pub title: Option<String>,
+            pub userrating: Option<usize>,
+            pub votes: Option<usize>,
+            pub year: Option<usize>,
+            pub album: Option<String>,
+            #[serde(default)]
+            pub albumartist: Vec<String>,
+            #[serde(default)]
+            pub albumartistid: Vec<isize>,
+            pub albumid: Option<usize>,
+            // pub albumreleasetype: Option<Audio.Album.ReleaseType>,
+            pub comment: Option<String>,
+            // pub contributors: Option<Audio.Contributors>,
+            pub disc: Option<usize>,
+            pub displaycomposer: Option<String>,
+            pub displayconductor: Option<String>,
+            pub displaylyricist: Option<String>,
+            pub displayorchestra: Option<String>,
+            pub duration: Option<usize>,
+            pub file: Option<String>,
+            #[serde(default)]
+            pub genreid: Vec<isize>,
+            pub lastplayed: Option<String>,
+            pub lyrics: Option<String>,
+            #[serde(default)]
+            pub mood: Vec<String>,
+            pub musicbrainzartistid: Option<Vec<String>>,
+            pub musicbrainztrackid: Option<String>,
+            pub playcount: Option<usize>,
+            pub songid: usize,
+            #[serde(default)]
+            pub sourceid: Vec<isize>,
+            pub track: Option<usize>,
+        }
     }
 
     pub mod fields {
@@ -202,6 +254,52 @@ pub mod audio {
             Type,
             Gender,
             Disambiguation,
+            Art,
+            SourceId,
+        }
+
+        /// Requesting the genreid, artistid, albumartistid and/or sourceid fields will result in increased response times
+        #[derive(Debug, EnumSetType, serde::Deserialize, serde::Serialize)]
+        #[enumset(serialize_as_list)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Song {
+            Title,
+            Artist,
+            AlbumArtist,
+            Genre,
+            Year,
+            Rating,
+            Album,
+            Track,
+            Duration,
+            Comment,
+            Lyrics,
+            MusicBrainzTrackId,
+            MusicBrainzArtistId,
+            MusicBrainzAlbumId,
+            MusicBrainzAlbumArtistId,
+            PlayCount,
+            FanArt,
+            Thumbnail,
+            File,
+            AlbumId,
+            LastPlayed,
+            Disc,
+            GenreId,
+            ArtistId,
+            DisplayArtist,
+            AlbumArtistId,
+            AlbumReleaseType,
+            DateAdded,
+            Votes,
+            UserRating,
+            Mood,
+            Contributors,
+            DisplayComposer,
+            DisplayConductor,
+            DisplayOrchestra,
+            DisplayLyricist,
+            SortArtist,
             Art,
             SourceId,
         }
@@ -555,6 +653,30 @@ pub mod list {
                     Self::Artist
                 }
             }
+
+            #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+            #[serde(rename_all = "lowercase")]
+            pub enum Songs {
+                Genre,
+                Source,
+                Album,
+                Artist,
+                AlbumArtist,
+                Title,
+                Year,
+                Time,
+                TrackNumber,
+                Filename,
+                Path,
+                PlayCount,
+                LastPlayed,
+                Rating,
+                UserRating,
+                Comment,
+                Moods,
+                Playlist,
+                VirtualFolder,
+            }
         }
 
         pub mod rule {
@@ -567,18 +689,17 @@ pub mod list {
             }
 
             #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-            pub struct Albums {
+            pub struct Rule<T> {
                 pub operator: crate::types::list::filter::Operators,
                 pub value: Value,
-                pub field: crate::types::list::filter::fields::Albums,
+                pub field: T,
             }
 
-            #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-            pub struct Artists {
-                pub operator: crate::types::list::filter::Operators,
-                pub value: Value,
-                pub field: crate::types::list::filter::fields::Artists,
-            }
+            pub type Albums = Rule<crate::types::list::filter::fields::Albums>;
+
+            pub type Artists = Rule<crate::types::list::filter::fields::Artists>;
+
+            pub type Songs = Rule<crate::types::list::filter::fields::Songs>;
         }
 
         #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -618,6 +739,14 @@ pub mod list {
         #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
         #[serde(rename_all = "lowercase")]
         pub enum Artists {
+            And(Vec<Artists>),
+            Or(Vec<Artists>),
+            Rule(crate::types::list::filter::rule::Artists),
+        }
+
+        #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+        #[serde(rename_all = "lowercase")]
+        pub enum Songs {
             And(Vec<Artists>),
             Or(Vec<Artists>),
             Rule(crate::types::list::filter::rule::Artists),

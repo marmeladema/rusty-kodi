@@ -64,8 +64,6 @@ define_method!(
 
 // AudioLibrary.GetAlbumDetails
 
-// AudioLibrary.GetAlbums
-
 #[derive(Debug, serde::Serialize)]
 pub enum AudioLibraryGetAlbumsFilterSimple {
     Genre(String),
@@ -192,7 +190,60 @@ pub struct AudioLibraryGetArtistsResponse {
 
 // AudioLibrary.GetSongDetails
 
-// AudioLibrary.GetSongs
+#[derive(Debug, serde::Serialize)]
+pub enum AudioLibraryGetSongsFilterSimple {
+    Genre(String),
+    GenreId(usize),
+    Album(String),
+    AlbumId(usize),
+    Artist(String),
+    ArtistId(usize),
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(untagged)]
+pub enum AudioLibraryGetSongsFilter {
+    Simple(AudioLibraryGetSongsFilterSimple),
+    Complex(crate::types::list::filter::Songs),
+}
+
+define_method!(
+    #[doc="Retrieve all songs from specified album, artist or genre"]
+    AudioLibrary.GetSongs {
+        #[serde(skip_serializing_if = "enumset::EnumSet::is_empty")]
+        properties: enumset::EnumSet<crate::types::audio::fields::Song>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limits: Option<crate::types::list::Limits>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        sort: Option<crate::types::list::Sort>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        filter: Option<AudioLibraryGetSongsFilter>,
+        includesingles: bool,
+        allroles: bool,
+        singlesonly: bool
+    } -> AudioLibraryGetSongsResponse
+);
+
+impl AudioLibraryGetSongs {
+    pub fn all_properties() -> Self {
+        Self {
+            properties: enumset::EnumSet::all(),
+            limits: None,
+            sort: None,
+            filter: None,
+            includesingles: true,
+            allroles: false,
+            singlesonly: false,
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AudioLibraryGetSongsResponse {
+    #[serde(default)]
+    pub songs: Vec<crate::types::audio::details::Song>,
+    pub limits: crate::types::list::LimitsReturned,
+}
 
 define_method!(
     #[doc="Get all music sources, including unique ID"]
