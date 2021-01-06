@@ -549,6 +549,7 @@ enum MPDSubCommand {
     NotCommands,
     Outputs,
     Pause(Option<bool>),
+    Ping,
     Play {
         songpos: Option<usize>,
     },
@@ -621,6 +622,7 @@ impl MPDSubCommand {
             Self::Outputs => b"outputs",
             Self::Pause(_) => b"pause",
             Self::Play { .. } => b"play",
+            Self::Ping => b"ping",
             Self::PlayId { .. } => b"playid",
             Self::PlaylistChanges { .. } => b"plchanges",
             Self::PlaylistChangesPosId { .. } => b"plchangesposid",
@@ -1040,6 +1042,7 @@ impl MPDSubCommand {
                 handler.pause(pause.as_ref().copied()).await;
                 Ok(Ok(()))
             }
+            Self::Ping => Ok(Ok(())),
             Self::Play { songpos } => {
                 handler
                     .play(songpos.as_ref().copied().map(QueueSong::from_pos))
@@ -1584,6 +1587,8 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::NotCommands)
     } else if name.as_ref() == b"outputs" {
         MPDCommand::Sub(MPDSubCommand::Outputs)
+    } else if name.as_ref() == b"ping" {
+        MPDCommand::Sub(MPDSubCommand::Ping)
     } else if name.as_ref() == b"pause" {
         if args.is_empty() {
             MPDCommand::Sub(MPDSubCommand::Pause(None))
