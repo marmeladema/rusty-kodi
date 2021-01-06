@@ -31,6 +31,7 @@ struct KodiProxyCommandHandler {
     subsystem_events: EnumMap<MPDSubsystem, usize>,
     subsystem_notifier: watch::Receiver<usize>,
     subsystem_version: usize,
+    tags: EnumSet<MPDTag>,
 }
 
 impl KodiProxyCommandHandler {
@@ -45,6 +46,7 @@ impl KodiProxyCommandHandler {
             subsystem_events: EnumMap::default(),
             subsystem_notifier,
             subsystem_version: 0,
+            tags: EnumSet::all(),
         }
     }
 
@@ -741,6 +743,28 @@ impl CommandHandler for KodiProxyCommandHandler {
         } else {
             Ok(EnumSet::empty())
         }
+    }
+
+    async fn tags_enable(
+        &mut self,
+        tags: EnumSet<MPDTag>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.tags.insert_all(tags);
+        Ok(())
+    }
+
+    async fn tags_disable(
+        &mut self,
+        tags: EnumSet<MPDTag>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.tags.remove_all(tags);
+        Ok(())
+    }
+
+    async fn tags_get(
+        &mut self,
+    ) -> Result<EnumSet<MPDTag>, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(self.tags)
     }
 }
 

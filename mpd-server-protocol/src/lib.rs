@@ -140,32 +140,32 @@ impl MPDTag {
 impl std::fmt::Display for MPDTag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MPDTag::Artist => write!(f, "artist"),
-            MPDTag::ArtistSort => write!(f, "artistsort"),
-            MPDTag::Album => write!(f, "album"),
-            MPDTag::AlbumSort => write!(f, "albumsort"),
-            MPDTag::AlbumArtist => write!(f, "albumartist"),
-            MPDTag::AlbumArtistSort => write!(f, "albumartistsort"),
-            MPDTag::Title => write!(f, "title"),
-            MPDTag::Track => write!(f, "track"),
-            MPDTag::Name => write!(f, "name"),
-            MPDTag::Genre => write!(f, "genre"),
-            MPDTag::Date => write!(f, "date"),
-            MPDTag::OriginalDate => write!(f, "originaldate"),
-            MPDTag::Composer => write!(f, "composer"),
-            MPDTag::Performer => write!(f, "performer"),
-            MPDTag::Conductor => write!(f, "conductor"),
-            MPDTag::Work => write!(f, "work"),
-            MPDTag::Grouping => write!(f, "grouping"),
-            MPDTag::Comment => write!(f, "comment"),
-            MPDTag::Disc => write!(f, "disc"),
-            MPDTag::Label => write!(f, "label"),
-            MPDTag::MusicBrainzArtistId => write!(f, "musicbrainz_artistid"),
-            MPDTag::MusicBrainzAlbumId => write!(f, "musicbrainz_albumid"),
-            MPDTag::MusicBrainzAlbumArtistId => write!(f, "musicbrainz_albumartistid"),
-            MPDTag::MusicBrainzTrackId => write!(f, "musicbrainz_trackid"),
-            MPDTag::MusicBrainzReleaseTrackId => write!(f, "musicbrainz_releasetrackid"),
-            MPDTag::MusicBrainzWorkId => write!(f, "musicbrainz_workid"),
+            MPDTag::Artist => write!(f, "Artist"),
+            MPDTag::ArtistSort => write!(f, "ArtistSort"),
+            MPDTag::Album => write!(f, "Album"),
+            MPDTag::AlbumSort => write!(f, "AlbumSort"),
+            MPDTag::AlbumArtist => write!(f, "AlbumArtist"),
+            MPDTag::AlbumArtistSort => write!(f, "AlbumArtistSort"),
+            MPDTag::Title => write!(f, "Title"),
+            MPDTag::Track => write!(f, "Track"),
+            MPDTag::Name => write!(f, "Name"),
+            MPDTag::Genre => write!(f, "Genre"),
+            MPDTag::Date => write!(f, "Date"),
+            MPDTag::OriginalDate => write!(f, "OriginalDate"),
+            MPDTag::Composer => write!(f, "Composer"),
+            MPDTag::Performer => write!(f, "Performer"),
+            MPDTag::Conductor => write!(f, "Conductor"),
+            MPDTag::Work => write!(f, "Work"),
+            MPDTag::Grouping => write!(f, "Grouping"),
+            MPDTag::Comment => write!(f, "Comment"),
+            MPDTag::Disc => write!(f, "Disc"),
+            MPDTag::Label => write!(f, "Label"),
+            MPDTag::MusicBrainzArtistId => write!(f, "MUSICBRAINZ_ARTISTID"),
+            MPDTag::MusicBrainzAlbumId => write!(f, "MUSICBRAINZ_ALBUMID"),
+            MPDTag::MusicBrainzAlbumArtistId => write!(f, "MUSICBRAINZ_ALBUMARTISTID"),
+            MPDTag::MusicBrainzTrackId => write!(f, "MUSICBRAINZ_TRACKID"),
+            MPDTag::MusicBrainzReleaseTrackId => write!(f, "MUSICBRAINZ_RELEASETRACKID"),
+            MPDTag::MusicBrainzWorkId => write!(f, "MUSICBRAINZ_WORKID"),
         }
     }
 }
@@ -499,10 +499,22 @@ pub trait CommandHandler {
         &mut self,
         wanted: EnumSet<MPDSubsystem>,
     ) -> Result<EnumSet<MPDSubsystem>, Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn tags_enable(
+        &mut self,
+        tags: EnumSet<MPDTag>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn tags_disable(
+        &mut self,
+        tags: EnumSet<MPDTag>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    async fn tags_get(
+        &mut self,
+    ) -> Result<EnumSet<MPDTag>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
-#[derive(Debug, PartialEq)]
-enum TagTypes {
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TagTypesCommand {
     All,
     Clear,
     Disable(EnumSet<MPDTag>),
@@ -590,7 +602,7 @@ enum MPDSubCommand {
     Stop,
     Swap(usize, usize),
     SwapId(usize, usize),
-    TagTypes(TagTypes),
+    TagTypes(TagTypesCommand),
     Update {
         uri: Option<Url>,
     },
@@ -951,6 +963,35 @@ async fn find(
     Ok(Ok(()))
 }
 
+async fn tagtypes(
+    stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
+    handler: &mut impl CommandHandler,
+    cmd: TagTypesCommand,
+    buf: &mut Vec<u8>,
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(match cmd {
+        TagTypesCommand::All => handler.tags_enable(EnumSet::all()).await,
+        TagTypesCommand::Clear => handler.tags_disable(EnumSet::all()).await,
+        TagTypesCommand::Disable(tags) => handler.tags_disable(tags).await,
+        TagTypesCommand::Enable(tags) => handler.tags_enable(tags).await,
+        TagTypesCommand::List => match handler.tags_get().await {
+            Ok(tags) => {
+                buf.clear();
+                let mut cursor = Cursor::new(&mut *buf);
+                let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+                for tag in tags {
+                    writeln!(writer, "tagtype: {}", tag).unwrap();
+                }
+                let data = &cursor.get_ref()[..(cursor.position() as usize)];
+                stream.write_all(data).await?;
+                Ok(())
+            }
+            Err(err) => Err(err),
+        },
+    }
+    .map_err(|err| CommandError::Unknown(err.to_string())))
+}
+
 impl MPDSubCommand {
     async fn process(
         &self,
@@ -1114,7 +1155,7 @@ impl MPDSubCommand {
                     .await?;
                 Ok(Ok(()))
             }
-            Self::TagTypes(_) => Ok(Ok(())),
+            Self::TagTypes(cmd) => tagtypes(stream, handler, *cmd, buf).await,
             Self::Update { uri } => {
                 handler.library_update(uri.as_ref(), false).await?;
                 Ok(Ok(()))
@@ -1750,13 +1791,13 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
         MPDCommand::Sub(MPDSubCommand::SwapId(id1, id2))
     } else if name.as_ref() == b"tagtypes" {
         if args.is_empty() {
-            MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::List))
+            MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypesCommand::List))
         } else {
             let (cmd, rest) = next_arg!(name, args, BString);
             args = rest;
             match cmd.as_slice() {
-                b"all" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::All)),
-                b"clear" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Clear)),
+                b"all" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypesCommand::All)),
+                b"clear" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypesCommand::Clear)),
                 b"disable" => {
                     let mut tags = EnumSet::empty();
                     while tags.is_empty() || !args.is_empty() {
@@ -1776,7 +1817,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                         };
                         tags.insert(tag);
                     }
-                    MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Disable(tags)))
+                    MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypesCommand::Disable(tags)))
                 }
                 b"enable" => {
                     let mut tags = EnumSet::empty();
@@ -1797,7 +1838,7 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                         };
                         tags.insert(tag);
                     }
-                    MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Enable(tags)))
+                    MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypesCommand::Enable(tags)))
                 }
                 _ => {
                     let msg = "Unknown sub command".to_string();
