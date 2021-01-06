@@ -107,7 +107,7 @@ impl KodiPlayer {
                 .await
             {
                 Ok(PlaylistGetItemsResponse { items, .. }) => {
-                    if &***self.playlist_items.read().await != items {
+                    if ***self.playlist_items.read().await != items {
                         *self.playlist_items.write().await = Arc::new(items.into_boxed_slice());
                         self.event_new(MPDSubsystem::Playlist);
                     }
