@@ -20,7 +20,7 @@ use std::time::Duration;
 use tokio::io::BufReader;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 use tracing::{event, Level};
 
 mod player;
@@ -733,7 +733,8 @@ impl CommandHandler for KodiProxyCommandHandler {
         &mut self,
         wanted: EnumSet<MPDSubsystem>,
     ) -> Result<EnumSet<MPDSubsystem>, Box<dyn std::error::Error + Send + Sync>> {
-        let version = self.subsystem_notifier.recv().await.unwrap();
+        self.subsystem_notifier.changed().await?;
+        let version = *self.subsystem_notifier.borrow();
         if version > self.subsystem_version {
             self.subsystem_version = version;
             Ok(self.events(wanted))
@@ -764,7 +765,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let opts: Opts = Opts::parse();
 
-    let mut listener = TcpListener::bind(opts.listen).await?;
+    let listener = TcpListener::bind(opts.listen).await?;
 
     let kodi_client = KodiClient::new(
         reqwest::Client::builder().build().unwrap(),
@@ -780,7 +781,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::spawn(async move {
         loop {
             main_player.refresh().await;
-            delay_for(Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(1000)).await;
         }
     });
 

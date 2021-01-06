@@ -169,7 +169,7 @@ impl KodiPlayer {
     pub fn event_new(&self, event: MPDSubsystem) -> usize {
         let count = self.subsystem_events[event].fetch_add(1, Ordering::Relaxed);
         let version = self.subsystem_version.fetch_add(1, Ordering::Relaxed);
-        self.subsystem_notifier.broadcast(version + 1).unwrap();
+        self.subsystem_notifier.send(version + 1).unwrap();
         count
     }
 
