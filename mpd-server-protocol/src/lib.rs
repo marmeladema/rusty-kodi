@@ -73,7 +73,7 @@ impl MPDSubsystem {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Debug, EnumSetType)]
 pub enum MPDTag {
     Artist,
     ArtistSort,
@@ -505,8 +505,8 @@ pub trait CommandHandler {
 enum TagTypes {
     All,
     Clear,
-    Disable(Vec<BString>),
-    Enable(Vec<BString>),
+    Disable(EnumSet<MPDTag>),
+    Enable(EnumSet<MPDTag>),
     List,
 }
 
@@ -1753,20 +1753,44 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                 b"all" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::All)),
                 b"clear" => MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Clear)),
                 b"disable" => {
-                    let mut tags = Vec::new();
-                    while !args.is_empty() {
-                        let (tag, rest) = next_arg!(name, args, BString);
-                        tags.push(tag);
+                    let mut tags = EnumSet::empty();
+                    while tags.is_empty() || !args.is_empty() {
+                        let (mut arg, rest) = next_arg!(name, args, BString);
                         args = rest;
+                        arg.make_ascii_lowercase();
+                        let tag = match MPDTag::from_bytes(arg.as_slice()) {
+                            Some(tag) => tag,
+                            None => {
+                                let msg = "Unknown tag type".to_string();
+                                return MPDCommand::Sub(MPDSubCommand::Invalid {
+                                    name: BString::from(name),
+                                    args: BString::from(args),
+                                    reason: CommandError::InvalidArgument(msg),
+                                });
+                            }
+                        };
+                        tags.insert(tag);
                     }
                     MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Disable(tags)))
                 }
                 b"enable" => {
-                    let mut tags = Vec::new();
-                    while !args.is_empty() {
-                        let (tag, rest) = next_arg!(name, args, BString);
-                        tags.push(tag);
+                    let mut tags = EnumSet::empty();
+                    while tags.is_empty() || !args.is_empty() {
+                        let (mut arg, rest) = next_arg!(name, args, BString);
                         args = rest;
+                        arg.make_ascii_lowercase();
+                        let tag = match MPDTag::from_bytes(arg.as_slice()) {
+                            Some(tag) => tag,
+                            None => {
+                                let msg = "Unknown tag type".to_string();
+                                return MPDCommand::Sub(MPDSubCommand::Invalid {
+                                    name: BString::from(name),
+                                    args: BString::from(args),
+                                    reason: CommandError::InvalidArgument(msg),
+                                });
+                            }
+                        };
+                        tags.insert(tag);
                     }
                     MPDCommand::Sub(MPDSubCommand::TagTypes(TagTypes::Enable(tags)))
                 }
