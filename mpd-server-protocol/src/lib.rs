@@ -223,7 +223,7 @@ impl std::fmt::Display for Song {
     }
 }
 
-pub enum DirEntry {
+pub enum LibraryEntry {
     Directory {
         path: PathBuf,
         last_modified: Option<SystemTime>,
@@ -231,7 +231,7 @@ pub enum DirEntry {
     File(Song),
 }
 
-impl std::fmt::Display for DirEntry {
+impl std::fmt::Display for LibraryEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Directory { path, .. } => {
@@ -279,24 +279,6 @@ impl QueueSong {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct LibraryEntry {
-    pub artist: Option<String>,
-    pub album: Option<String>,
-}
-
-impl std::fmt::Display for LibraryEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(artist) = self.artist.as_ref() {
-            writeln!(f, "Artist: {}", artist)?;
-        }
-        if let Some(album) = self.album.as_ref() {
-            writeln!(f, "Album: {}", album)?;
-        }
-        Ok(())
-    }
-}
-
 #[async_trait]
 pub trait CommandHandler {
     // fn url_parse(input: &str) -> Url;
@@ -305,7 +287,7 @@ pub trait CommandHandler {
     async fn list_directory(
         &mut self,
         path: Option<&Url>,
-    ) -> Result<Vec<DirEntry>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Returns the current song in the queue.
     async fn queue_current(&mut self) -> Option<QueueEntry>;

@@ -7,8 +7,8 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry,
-    QueueSong, Server, Song, Tag, TagFilter, TagType, Url,
+    CommandHandler, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry, QueueSong, Server,
+    Song, Tag, TagFilter, TagType, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -149,7 +149,7 @@ impl CommandHandler for KodiProxyCommandHandler {
     async fn list_directory(
         &mut self,
         url: Option<&Url>,
-    ) -> Result<Vec<DirEntry>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self
             .kodi_client
             .send_method(AudioLibraryGetSources::default())
@@ -161,7 +161,7 @@ impl CommandHandler for KodiProxyCommandHandler {
             Ok(resp
                 .sources
                 .into_iter()
-                .map(|source| DirEntry::Directory {
+                .map(|source| LibraryEntry::Directory {
                     path: PathBuf::from(source.label),
                     last_modified: None,
                 })
@@ -190,11 +190,11 @@ impl CommandHandler for KodiProxyCommandHandler {
                             let mut path = PathBuf::from(&source.label);
                             path.push(rest);
                             match file.filetype {
-                                KodiFileType::Directory => DirEntry::Directory {
+                                KodiFileType::Directory => LibraryEntry::Directory {
                                     path,
                                     last_modified: None,
                                 },
-                                KodiFileType::File => DirEntry::File(Song {
+                                KodiFileType::File => LibraryEntry::File(Song {
                                     path,
                                     last_modified: None,
                                     format: None,
