@@ -7,8 +7,8 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, File, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, MPDTag,
-    QueueEntry, QueueSong, Server, TagFilter, Url,
+    CommandHandler, DirEntry, File, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry,
+    QueueSong, Server, TagFilter, TagType, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -31,7 +31,7 @@ struct KodiProxyCommandHandler {
     subsystem_events: EnumMap<MPDSubsystem, usize>,
     subsystem_notifier: watch::Receiver<usize>,
     subsystem_version: usize,
-    tags: EnumSet<MPDTag>,
+    tags: EnumSet<TagType>,
 }
 
 impl KodiProxyCommandHandler {
@@ -636,15 +636,15 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn library_list(
         &mut self,
-        tag: MPDTag,
+        tag: TagType,
         filters: &[TagFilter],
-        groups: &[MPDTag],
+        groups: &[TagType],
     ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
         if !groups.is_empty() {
             return Err("groups are not supported".to_string().into());
         }
         match tag {
-            MPDTag::Album => {
+            TagType::Album => {
                 let mut albums = self
                     .kodi_client
                     .send_method(AudioLibraryGetAlbums::all_properties())
@@ -652,13 +652,13 @@ impl CommandHandler for KodiProxyCommandHandler {
                     .albums;
                 for filter in filters {
                     match filter.tag {
-                        MPDTag::Album => {
+                        TagType::Album => {
                             albums = albums
                                 .into_iter()
                                 .filter(|details| details.label == filter.value)
                                 .collect();
                         }
-                        MPDTag::Artist => {
+                        TagType::Artist => {
                             albums = albums
                                 .into_iter()
                                 .filter(|details| details.artist.contains(&filter.value))
@@ -679,13 +679,13 @@ impl CommandHandler for KodiProxyCommandHandler {
                     })
                     .collect())
             }
-            MPDTag::Artist | MPDTag::AlbumArtist => {
+            TagType::Artist | TagType::AlbumArtist => {
                 let mut artists = self
                     .kodi_client
                     .send_method(AudioLibraryGetArtists::all_properties())
                     .await?
                     .artists;
-                if tag == MPDTag::AlbumArtist {
+                if tag == TagType::AlbumArtist {
                     artists = artists
                         .into_iter()
                         .filter(|details| details.isalbumartist)
@@ -693,13 +693,13 @@ impl CommandHandler for KodiProxyCommandHandler {
                 }
                 for filter in filters {
                     match filter.tag {
-                        MPDTag::Album => {
+                        TagType::Album => {
                             artists = artists
                                 .into_iter()
                                 .filter(|details| details.label == filter.value)
                                 .collect();
                         }
-                        MPDTag::Artist => {
+                        TagType::Artist => {
                             artists = artists
                                 .into_iter()
                                 .filter(|details| details.artist.contains(&filter.value))
@@ -747,7 +747,7 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn tags_enable(
         &mut self,
-        tags: EnumSet<MPDTag>,
+        tags: EnumSet<TagType>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.tags.insert_all(tags);
         Ok(())
@@ -755,7 +755,7 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn tags_disable(
         &mut self,
-        tags: EnumSet<MPDTag>,
+        tags: EnumSet<TagType>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.tags.remove_all(tags);
         Ok(())
@@ -763,7 +763,7 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn tags_get(
         &mut self,
-    ) -> Result<EnumSet<MPDTag>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<EnumSet<TagType>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(self.tags)
     }
 }
