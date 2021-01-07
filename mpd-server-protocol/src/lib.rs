@@ -195,12 +195,7 @@ impl MPDStatus {
 #[derive(Debug, Default)]
 pub struct File {
     pub duration: Option<usize>,
-    pub album: Option<String>,
-    pub artist: Vec<String>,
-    pub title: Option<String>,
-    pub track: Option<usize>,
-    pub year: Option<usize>,
-    pub genre: Vec<String>,
+    pub tags: Vec<Tag>,
 }
 
 impl std::fmt::Display for File {
@@ -209,23 +204,8 @@ impl std::fmt::Display for File {
             writeln!(f, "duration: {}", duration)?;
             writeln!(f, "Time: {}", duration)?;
         }
-        for artist in &self.artist {
-            writeln!(f, "Artist: {}", artist)?;
-        }
-        if let Some(ref album) = self.album {
-            writeln!(f, "Album: {}", album)?;
-        }
-        if let Some(ref title) = self.title {
-            writeln!(f, "Title: {}", title)?;
-        }
-        if let Some(track) = self.track {
-            writeln!(f, "Track: {}", track)?;
-        }
-        if let Some(year) = self.year {
-            writeln!(f, "Date: {}", year)?;
-        }
-        for genre in &self.genre {
-            writeln!(f, "Genre: {}", genre)?;
+        for tag in &self.tags {
+            write!(f, "{}", tag)?;
         }
         Ok(())
     }
@@ -394,7 +374,7 @@ pub trait CommandHandler {
         tag: TagType,
         filters: &[TagFilter],
         groups: &[TagType],
-    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<Vec<Tag>, Box<dyn std::error::Error + Send + Sync>>;
 
     async fn library_find(
         &mut self,

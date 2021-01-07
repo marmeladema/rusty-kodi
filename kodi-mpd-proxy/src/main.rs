@@ -8,7 +8,7 @@ use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
     CommandHandler, DirEntry, File, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry,
-    QueueSong, Server, TagFilter, TagType, Url,
+    QueueSong, Server, Tag, TagFilter, TagType, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -194,12 +194,20 @@ impl CommandHandler for KodiProxyCommandHandler {
                                 KodiFileType::Directory => None,
                                 KodiFileType::File => Some(File {
                                     duration: file.duration,
-                                    artist: file.artist,
-                                    album: file.album,
-                                    genre: file.genre,
-                                    title: file.title,
-                                    track: file.track,
-                                    year: file.year,
+                                    tags: {
+                                        let mut vec = Vec::new();
+                                        vec.extend(file.artist.into_iter().map(Tag::artist));
+                                        vec.extend(file.album.map(Tag::album));
+                                        vec.extend(file.genre.into_iter().map(Tag::genre));
+                                        vec.extend(file.title.map(Tag::title));
+                                        vec.extend(
+                                            file.track.map(|track| Tag::track(track.to_string())),
+                                        );
+                                        vec.extend(
+                                            file.year.map(|year| Tag::date(year.to_string())),
+                                        );
+                                        vec
+                                    },
                                 }),
                             };
                             DirEntry {
@@ -225,9 +233,13 @@ impl CommandHandler for KodiProxyCommandHandler {
             return Some(QueueEntry {
                 path: PathBuf::from(&item.file.unwrap()),
                 file: File {
-                    artist: item.artist,
-                    album: item.album,
-                    title: item.title,
+                    tags: {
+                        let mut vec = Vec::new();
+                        vec.extend(item.artist.into_iter().map(Tag::artist));
+                        vec.extend(item.album.map(Tag::album));
+                        vec.extend(item.title.map(Tag::title));
+                        vec
+                    },
                     ..Default::default()
                 },
                 position,
@@ -251,9 +263,13 @@ impl CommandHandler for KodiProxyCommandHandler {
         items.extend(range.iter().enumerate().map(|(idx, item)| QueueEntry {
             path: PathBuf::from(item.file.as_ref().unwrap()),
             file: File {
-                artist: item.artist.clone(),
-                album: item.album.as_ref().map(String::from),
-                title: item.title.as_ref().map(String::from),
+                tags: {
+                    let mut vec = Vec::new();
+                    vec.extend(item.artist.clone().into_iter().map(Tag::artist));
+                    vec.extend(item.album.clone().map(Tag::album));
+                    vec.extend(item.title.clone().map(Tag::title));
+                    vec
+                },
                 ..Default::default()
             },
             position: idx + start,
@@ -639,7 +655,7 @@ impl CommandHandler for KodiProxyCommandHandler {
         tag: TagType,
         filters: &[TagFilter],
         groups: &[TagType],
-    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<Tag>, Box<dyn std::error::Error + Send + Sync>> {
         if !groups.is_empty() {
             return Err("groups are not supported".to_string().into());
         }
@@ -671,11 +687,12 @@ impl CommandHandler for KodiProxyCommandHandler {
                         }
                     }
                 }
+
                 Ok(albums
                     .into_iter()
-                    .map(|album| LibraryEntry {
-                        album: Some(album.label),
-                        ..Default::default()
+                    .map(|album| Tag {
+                        kind: TagType::Album,
+                        value: album.label,
                     })
                     .collect())
             }
@@ -714,9 +731,9 @@ impl CommandHandler for KodiProxyCommandHandler {
                 }
                 Ok(artists
                     .into_iter()
-                    .map(|artist| LibraryEntry {
-                        artist: Some(artist.label),
-                        ..Default::default()
+                    .map(|artist| Tag {
+                        kind: TagType::Artist,
+                        value: artist.label,
                     })
                     .collect())
             }
