@@ -193,7 +193,7 @@ impl MPDStatus {
 }
 
 #[derive(Debug, Default)]
-pub struct File {
+pub struct Song {
     pub path: PathBuf,
     pub last_modified: Option<SystemTime>,
     pub format: Option<String>,
@@ -201,7 +201,7 @@ pub struct File {
     pub tags: Vec<Tag>,
 }
 
-impl std::fmt::Display for File {
+impl std::fmt::Display for Song {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
@@ -228,7 +228,7 @@ pub enum DirEntry {
         path: PathBuf,
         last_modified: Option<SystemTime>,
     },
-    File(File),
+    File(Song),
 }
 
 impl std::fmt::Display for DirEntry {
@@ -249,20 +249,14 @@ impl std::fmt::Display for DirEntry {
 }
 
 pub struct QueueEntry {
-    pub path: PathBuf,
-    pub file: File,
+    pub song: Song,
     pub id: BString,
     pub position: usize,
 }
 
 impl std::fmt::Display for QueueEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "file: {}",
-            <&BStr>::from(self.path.as_os_str().as_bytes())
-        )?;
-        write!(f, "{}", self.file)?;
+        write!(f, "{}", self.song)?;
         writeln!(f, "Pos: {}", self.position)?;
         writeln!(f, "Id: {}", self.id)?;
         Ok(())

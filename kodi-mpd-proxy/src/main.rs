@@ -7,8 +7,8 @@ use kodi_jsonrpc_client::methods::*;
 use kodi_jsonrpc_client::types::list::item::FileType as KodiFileType;
 use kodi_jsonrpc_client::KodiClient;
 use mpd_server_protocol::{
-    CommandHandler, DirEntry, File, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry,
-    QueueSong, Server, Tag, TagFilter, TagType, Url,
+    CommandHandler, DirEntry, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry,
+    QueueSong, Server, Song, Tag, TagFilter, TagType, Url,
 };
 use std::ffi::OsStr;
 use std::net::SocketAddr;
@@ -194,7 +194,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                                     path,
                                     last_modified: None,
                                 },
-                                KodiFileType::File => DirEntry::File(File {
+                                KodiFileType::File => DirEntry::File(Song {
                                     path,
                                     last_modified: None,
                                     format: None,
@@ -231,8 +231,8 @@ impl CommandHandler for KodiProxyCommandHandler {
                 .await
                 .unwrap();
             return Some(QueueEntry {
-                path: PathBuf::from(&item.file.unwrap()),
-                file: File {
+                song: Song {
+                    path: PathBuf::from(&item.file.unwrap()),
                     tags: {
                         let mut vec = Vec::new();
                         vec.extend(item.artist.into_iter().map(Tag::artist));
@@ -261,8 +261,8 @@ impl CommandHandler for KodiProxyCommandHandler {
             (0, &playlist_items[..])
         };
         items.extend(range.iter().enumerate().map(|(idx, item)| QueueEntry {
-            path: PathBuf::from(item.file.as_ref().unwrap()),
-            file: File {
+            song: Song {
+                path: PathBuf::from(item.file.as_ref().unwrap()),
                 tags: {
                     let mut vec = Vec::new();
                     vec.extend(item.artist.clone().into_iter().map(Tag::artist));
