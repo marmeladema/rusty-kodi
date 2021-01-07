@@ -744,7 +744,7 @@ impl CommandHandler for KodiProxyCommandHandler {
     async fn library_find(
         &mut self,
         filters: &[TagFilter],
-    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<Song>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(Vec::new())
     }
 

@@ -384,7 +384,7 @@ pub trait CommandHandler {
     async fn library_find(
         &mut self,
         filters: &[TagFilter],
-    ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<Vec<Song>, Box<dyn std::error::Error + Send + Sync>>;
 
     async fn idle(
         &mut self,
