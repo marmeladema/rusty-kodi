@@ -194,15 +194,27 @@ impl MPDStatus {
 
 #[derive(Debug, Default)]
 pub struct File {
+    pub path: PathBuf,
+    pub last_modified: Option<SystemTime>,
+    pub format: Option<String>,
     pub duration: Option<usize>,
     pub tags: Vec<Tag>,
 }
 
 impl std::fmt::Display for File {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "file: {}",
+            <&BStr>::from(self.path.as_os_str().as_bytes())
+        )?;
+        // TODO: handle Last-Modified
+        if let Some(format) = &self.format {
+            writeln!(f, "Format: {}", format)?;
+        }
         if let Some(duration) = self.duration {
-            writeln!(f, "duration: {}", duration)?;
             writeln!(f, "Time: {}", duration)?;
+            writeln!(f, "duration: {}", duration)?;
         }
         for tag in &self.tags {
             write!(f, "{}", tag)?;
@@ -211,29 +223,28 @@ impl std::fmt::Display for File {
     }
 }
 
-pub struct DirEntry {
-    pub path: PathBuf,
-    pub file: Option<File>,
-    pub last_modified: Option<SystemTime>,
+pub enum DirEntry {
+    Directory {
+        path: PathBuf,
+        last_modified: Option<SystemTime>,
+    },
+    File(File),
 }
 
 impl std::fmt::Display for DirEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(ref file) = self.file {
-            writeln!(
-                f,
-                "file: {}",
-                <&BStr>::from(self.path.as_os_str().as_bytes())
-            )?;
-            write!(f, "{}", file)?;
-        } else {
-            writeln!(
-                f,
-                "directory: {}",
-                <&BStr>::from(self.path.as_os_str().as_bytes())
-            )?;
+        match self {
+            Self::Directory { path, .. } => {
+                writeln!(
+                    f,
+                    "directory: {}",
+                    <&BStr>::from(path.as_os_str().as_bytes())
+                )?;
+                // TODO: handle Last-Modified
+                Ok(())
+            }
+            Self::File(file) => write!(f, "{}", file),
         }
-        Ok(())
     }
 }
 

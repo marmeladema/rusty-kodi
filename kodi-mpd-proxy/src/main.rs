@@ -161,10 +161,9 @@ impl CommandHandler for KodiProxyCommandHandler {
             Ok(resp
                 .sources
                 .into_iter()
-                .map(|source| DirEntry {
+                .map(|source| DirEntry::Directory {
                     path: PathBuf::from(source.label),
                     last_modified: None,
-                    file: None,
                 })
                 .collect())
         } else {
@@ -190,9 +189,15 @@ impl CommandHandler for KodiProxyCommandHandler {
                                 .unwrap();
                             let mut path = PathBuf::from(&source.label);
                             path.push(rest);
-                            let file = match file.filetype {
-                                KodiFileType::Directory => None,
-                                KodiFileType::File => Some(File {
+                            match file.filetype {
+                                KodiFileType::Directory => DirEntry::Directory {
+                                    path,
+                                    last_modified: None,
+                                },
+                                KodiFileType::File => DirEntry::File(File {
+                                    path,
+                                    last_modified: None,
+                                    format: None,
                                     duration: file.duration,
                                     tags: {
                                         let mut vec = Vec::new();
@@ -209,11 +214,6 @@ impl CommandHandler for KodiProxyCommandHandler {
                                         vec
                                     },
                                 }),
-                            };
-                            DirEntry {
-                                path,
-                                last_modified: None,
-                                file,
                             }
                         })
                         .collect());
