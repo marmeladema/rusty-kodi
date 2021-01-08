@@ -65,6 +65,7 @@ define_method!(
 // AudioLibrary.GetAlbumDetails
 
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AudioLibraryGetAlbumsFilterSimple {
     Genre(String),
     GenreId(usize),
@@ -118,6 +119,7 @@ pub struct AudioLibraryGetAlbumsResponse {
 // AudioLibrary.GetArtistDetails
 
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AudioLibraryGetArtistsFilterSimple {
     Genre(String),
     GenreId(usize),
@@ -191,6 +193,7 @@ pub struct AudioLibraryGetArtistsResponse {
 // AudioLibrary.GetSongDetails
 
 #[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum AudioLibraryGetSongsFilterSimple {
     Genre(String),
     GenreId(usize),
