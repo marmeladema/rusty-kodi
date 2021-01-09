@@ -103,16 +103,8 @@ fn usize_to_bstring(val: usize) -> BString {
 #[async_trait]
 impl CommandHandler for KodiProxyCommandHandler {
     async fn get_status(&mut self) -> MPDStatus {
-        let app_props = self
-            .kodi_client
-            .send_method(ApplicationGetProperties {
-                properties: kodi_jsonrpc_client::types::application::property::Name::Volume.into(),
-            })
-            .await
-            .unwrap();
-
         let mut status = MPDStatus {
-            volume: app_props.volume,
+            volume: self.player.volume().await,
             ..Default::default()
         };
         let PlayerGetItemResponse::Item(item) = self
@@ -609,14 +601,7 @@ impl CommandHandler for KodiProxyCommandHandler {
     }
 
     async fn volume_get(&mut self) -> usize {
-        let app_props = self
-            .kodi_client
-            .send_method(ApplicationGetProperties {
-                properties: kodi_jsonrpc_client::types::application::property::Name::Volume.into(),
-            })
-            .await
-            .unwrap();
-        app_props.volume.unwrap().into()
+        self.player.volume().await.unwrap().into()
     }
 
     async fn volume_set(&mut self, level: usize) {
