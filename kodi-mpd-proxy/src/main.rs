@@ -737,13 +737,43 @@ impl CommandHandler for KodiProxyCommandHandler {
         let mut filter: Option<SongsFiler> = None;
         for tag_filter in filters {
             let item = match tag_filter.tag {
+                TagType::Album => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Album,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                TagType::AlbumArtist => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::AlbumArtist,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
                 TagType::Artist => SongsFiler::Rule(SongsRule {
                     field: SongsFields::Artist,
                     operator: Operators::Is,
                     value: tag_filter.value.clone().into(),
                 }),
-                TagType::Album => SongsFiler::Rule(SongsRule {
-                    field: SongsFields::Album,
+                TagType::Comment => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Comment,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                TagType::Date => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Year,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                TagType::Genre => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Genre,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                TagType::Title => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Title,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                TagType::Track => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::TrackNumber,
                     operator: Operators::Is,
                     value: tag_filter.value.clone().into(),
                 }),
