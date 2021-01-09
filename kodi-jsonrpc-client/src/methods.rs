@@ -210,6 +210,18 @@ pub enum AudioLibraryGetSongsFilter {
     Complex(crate::types::list::filter::Songs),
 }
 
+impl From<AudioLibraryGetSongsFilterSimple> for AudioLibraryGetSongsFilter {
+    fn from(value: AudioLibraryGetSongsFilterSimple) -> Self {
+        Self::Simple(value)
+    }
+}
+
+impl From<crate::types::list::filter::Songs> for AudioLibraryGetSongsFilter {
+    fn from(value: crate::types::list::filter::Songs) -> Self {
+        Self::Complex(value)
+    }
+}
+
 define_method!(
     #[doc="Retrieve all songs from specified album, artist or genre"]
     AudioLibrary.GetSongs {

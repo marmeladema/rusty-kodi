@@ -688,6 +688,18 @@ pub mod list {
                 Many(Vec<String>),
             }
 
+            impl From<String> for Value {
+                fn from(value: String) -> Self {
+                    Self::One(value)
+                }
+            }
+
+            impl From<Vec<String>> for Value {
+                fn from(value: Vec<String>) -> Self {
+                    Self::Many(value)
+                }
+            }
+
             #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
             pub struct Rule<T> {
                 pub operator: crate::types::list::filter::Operators,
@@ -730,27 +742,55 @@ pub mod list {
 
         #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
         #[serde(rename_all = "lowercase")]
-        pub enum Albums {
-            And(Vec<Albums>),
-            Or(Vec<Albums>),
-            Rule(crate::types::list::filter::rule::Albums),
+        pub enum Logical<T> {
+            And(Vec<T>),
+            Or(Vec<T>),
         }
 
         #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-        #[serde(rename_all = "lowercase")]
-        pub enum Artists {
-            And(Vec<Artists>),
-            Or(Vec<Artists>),
-            Rule(crate::types::list::filter::rule::Artists),
+        #[serde(untagged)]
+        pub enum Filter<T> {
+            Logical(Logical<Self>),
+            Rule(T),
         }
 
-        #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-        #[serde(rename_all = "lowercase")]
-        pub enum Songs {
-            And(Vec<Artists>),
-            Or(Vec<Artists>),
-            Rule(crate::types::list::filter::rule::Artists),
+        impl<T> Filter<T> {
+            pub fn and(&mut self, item: Self) -> &mut Self {
+                match self {
+                    Self::Logical(Logical::And(items)) => items.push(item),
+                    _ => {
+                        let first =
+                            std::mem::replace(self, Filter::Logical(Logical::And(Vec::new())));
+                        *self = Filter::Logical(Logical::And(vec![first, item]));
+                    }
+                }
+                self
+            }
+
+            pub fn or(&mut self, item: Self) -> &mut Self {
+                match self {
+                    Self::Logical(Logical::Or(items)) => items.push(item),
+                    _ => {
+                        let first =
+                            std::mem::replace(self, Filter::Logical(Logical::Or(Vec::new())));
+                        *self = Filter::Logical(Logical::Or(vec![first, item]));
+                    }
+                }
+                self
+            }
         }
+
+        impl<T> From<T> for Filter<T> {
+            fn from(value: T) -> Self {
+                Self::Rule(value)
+            }
+        }
+
+        pub type Albums = Filter<rule::Albums>;
+
+        pub type Artists = Filter<rule::Artists>;
+
+        pub type Songs = Filter<rule::Songs>;
     }
 
     pub mod item {

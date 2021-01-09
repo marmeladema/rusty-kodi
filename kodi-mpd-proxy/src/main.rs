@@ -730,61 +730,53 @@ impl CommandHandler for KodiProxyCommandHandler {
         &mut self,
         filters: &[TagFilter],
     ) -> Result<Vec<Song>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut songs = Vec::new();
-        if let Some((first, _)) = filters.split_first() {
-            match first.tag {
-                TagType::Artist => {
-                    let filter = AudioLibraryGetSongsFilter::Simple(
-                        AudioLibraryGetSongsFilterSimple::Artist(first.value.clone()),
-                    );
-                    let mut method = AudioLibraryGetSongs::all_properties();
-                    method.filter = Some(filter);
-                    for song in self.kodi_client.send_method(method).await?.songs {
-                        songs.push(Song {
-                            path: song.file.unwrap().into(),
-                            last_modified: None,
-                            format: None,
-                            duration: song.duration,
-                            tags: {
-                                let mut vec = Vec::new();
-                                vec.extend(song.artist.into_iter().map(Tag::artist));
-                                vec.extend(song.album.map(Tag::album));
-                                vec.extend(song.genre.into_iter().map(Tag::genre));
-                                vec.extend(song.title.map(Tag::title));
-                                vec.extend(song.track.map(|track| Tag::track(track.to_string())));
-                                vec.extend(song.year.map(|year| Tag::date(year.to_string())));
-                                vec
-                            },
-                        });
-                    }
-                }
-                TagType::Album => {
-                    let filter = AudioLibraryGetSongsFilter::Simple(
-                        AudioLibraryGetSongsFilterSimple::Album(first.value.clone()),
-                    );
-                    let mut method = AudioLibraryGetSongs::all_properties();
-                    method.filter = Some(filter);
-                    for song in self.kodi_client.send_method(method).await?.songs {
-                        songs.push(Song {
-                            path: song.file.unwrap().into(),
-                            last_modified: None,
-                            format: None,
-                            duration: song.duration,
-                            tags: {
-                                let mut vec = Vec::new();
-                                vec.extend(song.artist.into_iter().map(Tag::artist));
-                                vec.extend(song.album.map(Tag::album));
-                                vec.extend(song.genre.into_iter().map(Tag::genre));
-                                vec.extend(song.title.map(Tag::title));
-                                vec.extend(song.track.map(|track| Tag::track(track.to_string())));
-                                vec.extend(song.year.map(|year| Tag::date(year.to_string())));
-                                vec
-                            },
-                        });
-                    }
-                }
-                _ => {}
+        use kodi_jsonrpc_client::types::list::filter::fields::Songs as SongsFields;
+        use kodi_jsonrpc_client::types::list::filter::rule::Songs as SongsRule;
+        use kodi_jsonrpc_client::types::list::filter::{Operators, Songs as SongsFiler};
+
+        let mut filter: Option<SongsFiler> = None;
+        for tag_filter in filters {
+            let item = match tag_filter.tag {
+                TagType::Artist => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Artist,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                TagType::Album => SongsFiler::Rule(SongsRule {
+                    field: SongsFields::Album,
+                    operator: Operators::Is,
+                    value: tag_filter.value.clone().into(),
+                }),
+                _ => return Err("Unsupported filter".into()),
+            };
+            if let Some(filter) = &mut filter {
+                filter.and(item);
+            } else {
+                filter = Some(item);
             }
+        }
+        let mut method = AudioLibraryGetSongs::all_properties();
+        if let Some(filter) = filter {
+            method.filter = Some(filter.into());
+        }
+        let mut songs = Vec::new();
+        for song in self.kodi_client.send_method(method).await?.songs {
+            songs.push(Song {
+                path: song.file.unwrap().into(),
+                last_modified: None,
+                format: None,
+                duration: song.duration,
+                tags: {
+                    let mut vec = Vec::new();
+                    vec.extend(song.artist.into_iter().map(Tag::artist));
+                    vec.extend(song.album.map(Tag::album));
+                    vec.extend(song.genre.into_iter().map(Tag::genre));
+                    vec.extend(song.title.map(Tag::title));
+                    vec.extend(song.track.map(|track| Tag::track(track.to_string())));
+                    vec.extend(song.year.map(|year| Tag::date(year.to_string())));
+                    vec
+                },
+            });
         }
         Ok(songs)
     }
