@@ -405,6 +405,7 @@ pub struct TagFilter {
 enum MPDSubCommand {
     Add(Url),
     AddId(Url, Option<usize>),
+    Channels,
     Clear,
     Commands,
     CurrentSong,
@@ -487,6 +488,7 @@ impl MPDSubCommand {
         <&BStr>::from(match self {
             Self::Add(_) => &b"add"[..],
             Self::AddId(..) => b"addid",
+            Self::Channels => b"channels",
             Self::Clear => b"clear",
             Self::Commands => b"commands",
             Self::CurrentSong => b"currentsong",
@@ -884,6 +886,7 @@ impl MPDSubCommand {
         match self {
             Self::Add(url) => add(stream, handler, url, buf).await,
             Self::AddId(url, pos) => addid(stream, handler, url, pos.as_ref().copied(), buf).await,
+            Self::Channels => Ok(Ok(())),
             Self::Clear => {
                 handler.queue_clear().await?;
                 Ok(Ok(()))
@@ -1301,6 +1304,8 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                 })
             }
         }
+    } else if name.as_ref() == b"channels" {
+        MPDCommand::Sub(MPDSubCommand::Channels)
     } else if name.as_ref() == b"clear" {
         MPDCommand::Sub(MPDSubCommand::Clear)
     } else if name.as_ref() == b"command_list_begin" {
