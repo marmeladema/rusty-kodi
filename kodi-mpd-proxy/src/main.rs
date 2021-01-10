@@ -146,9 +146,15 @@ impl CommandHandler for KodiProxyCommandHandler {
             .kodi_client
             .send_method(AudioLibraryGetSources::default())
             .await?;
-        let path = url
-            .map(|url| url.to_file_path().unwrap())
-            .unwrap_or_default();
+
+        let path = if let Some(url) = url {
+            if url.scheme() != "file" {
+                return Err("Unsupported URI scheme".into());
+            }
+            url.to_file_path().unwrap()
+        } else {
+            PathBuf::default()
+        };
         if path == Path::new("/") || path == Path::new("") {
             Ok(resp
                 .sources
@@ -265,7 +271,8 @@ impl CommandHandler for KodiProxyCommandHandler {
                 ..Default::default()
             },
             position: idx + start,
-            id: usize_to_bstring(item.id.unwrap()),
+            // TODO: properly files without library id
+            id: usize_to_bstring(item.id.unwrap_or(usize::MAX)),
         }));
         items
     }
