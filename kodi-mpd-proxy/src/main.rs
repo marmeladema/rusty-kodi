@@ -590,6 +590,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                     value: PlayerSeekMode::Time(time.into()),
                 })
                 .await?;
+            self.player.event_new(MPDSubsystem::Player);
         }
         Ok(())
     }
@@ -604,6 +605,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                 value: PlayerSeekMode::Time(time.into()),
             })
             .await?;
+        self.player.event_new(MPDSubsystem::Player);
         Ok(())
     }
 
