@@ -434,6 +434,7 @@ enum MPDSubCommand {
         filters: Vec<TagFilter>,
         groups: Vec<TagType>,
     },
+    ListPartitions,
     ListPlaylist(BString),
     ListPlaylistInfo(BString),
     ListPlaylists,
@@ -509,6 +510,7 @@ impl MPDSubCommand {
             Self::Idle(_) => b"idle",
             Self::Invalid { name, .. } => name,
             Self::List { .. } => b"list",
+            Self::ListPartitions => b"listpartitions",
             Self::ListPlaylist(_) => b"listplaylist",
             Self::ListPlaylistInfo(_) => b"listplaylistinfo",
             Self::ListPlaylists => b"listplaylists",
@@ -956,6 +958,10 @@ impl MPDSubCommand {
                 filters,
                 groups,
             } => list(stream, handler, *tag, filters, groups, buf).await,
+            Self::ListPartitions => {
+                stream.write_all(b"partition: default\n").await?;
+                Ok(Ok(()))
+            }
             Self::ListPlaylist(_) => {
                 return Ok(Err(CommandError::NoExist(
                     "playlist does not exist".to_owned(),
@@ -1500,6 +1506,8 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
             filters,
             groups,
         })
+    } else if name.as_ref() == b"listpartitions" {
+        MPDCommand::Sub(MPDSubCommand::ListPartitions)
     } else if name.as_ref() == b"listplaylist" {
         let (playlist, rest) = next_arg!(name, args, BString);
         args = rest;
