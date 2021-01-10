@@ -387,6 +387,14 @@ pub trait CommandHandler {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+enum ReplayGainMode {
+    Off,
+    Track,
+    Album,
+    Auto,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum TagTypesCommand {
     All,
     Clear,
@@ -456,6 +464,7 @@ enum MPDSubCommand {
     Random {
         state: bool,
     },
+    ReplayGainMode(ReplayGainMode),
     ReplayGainStatus,
     Rescan {
         uri: Option<Url>,
@@ -518,6 +527,7 @@ impl MPDSubCommand {
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
             Self::Random { .. } => b"random",
+            Self::ReplayGainMode(..) => b"replay_gain_mode",
             Self::ReplayGainStatus => b"replay_gain_status",
             Self::Rescan { .. } => b"rescan",
             Self::Seek { .. } => b"seek",
@@ -999,6 +1009,15 @@ impl MPDSubCommand {
             Self::Random { state } => {
                 handler.random(*state).await?;
                 Ok(Ok(()))
+            }
+            Self::ReplayGainMode(mode) => {
+                if *mode == ReplayGainMode::Off {
+                    Ok(Ok(()))
+                } else {
+                    Ok(Err(CommandError::Unknown(
+                        "Unsupported replay gain mode".to_string(),
+                    )))
+                }
             }
             Self::ReplayGainStatus => {
                 stream.write_all(b"replay_gain_mode: off\n").await?;
@@ -1612,6 +1631,23 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                     args: BString::from(args),
                     reason: CommandError::Unknown(msg),
                 })
+            }
+        }
+    } else if name.as_ref() == b"replay_gain_mode" {
+        let (mode, rest) = next_arg!(name, args, BString);
+        args = rest;
+        match mode.as_slice() {
+            b"off" => MPDCommand::Sub(MPDSubCommand::ReplayGainMode(ReplayGainMode::Off)),
+            b"track" => MPDCommand::Sub(MPDSubCommand::ReplayGainMode(ReplayGainMode::Track)),
+            b"album" => MPDCommand::Sub(MPDSubCommand::ReplayGainMode(ReplayGainMode::Album)),
+            b"auto" => MPDCommand::Sub(MPDSubCommand::ReplayGainMode(ReplayGainMode::Auto)),
+            _ => {
+                let msg = "Unrecognized replay gain mode".to_string();
+                return MPDCommand::Sub(MPDSubCommand::Invalid {
+                    name: BString::from(name),
+                    args: BString::from(args),
+                    reason: CommandError::InvalidArgument(msg),
+                });
             }
         }
     } else if name.as_ref() == b"replay_gain_status" {
