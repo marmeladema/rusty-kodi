@@ -1,6 +1,6 @@
 use enumset::EnumSetType;
 
-#[derive(Debug, EnumSetType)]
+#[derive(Debug, EnumSetType, Hash)]
 pub enum TagType {
     Artist,
     ArtistSort,
@@ -97,7 +97,7 @@ impl std::fmt::Display for TagType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Tag {
     pub kind: TagType,
     pub value: String,

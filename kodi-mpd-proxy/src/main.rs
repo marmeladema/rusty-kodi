@@ -644,95 +644,49 @@ impl CommandHandler for KodiProxyCommandHandler {
         Ok(())
     }
 
+    // This is probably super-inefficient, but it works for the time being
     async fn library_list(
         &mut self,
         tag: TagType,
         filters: &[TagFilter],
         groups: &[TagType],
     ) -> Result<Vec<Tag>, Box<dyn std::error::Error + Send + Sync>> {
-        if !groups.is_empty() {
-            return Err("groups are not supported".to_string().into());
-        }
-        match tag {
-            TagType::Album => {
-                let mut albums = self
-                    .kodi_client
-                    .send_method(AudioLibraryGetAlbums::all_properties())
-                    .await?
-                    .albums;
-                for filter in filters {
-                    match filter.tag {
-                        TagType::Album => {
-                            albums = albums
-                                .into_iter()
-                                .filter(|details| details.label == filter.value)
-                                .collect();
-                        }
-                        TagType::Artist => {
-                            albums = albums
-                                .into_iter()
-                                .filter(|details| details.artist.contains(&filter.value))
-                                .collect();
-                        }
-                        _ => {
-                            return Err(
-                                format!("filtering on tag '{}' not supported", filter.tag).into()
-                            )
-                        }
-                    }
-                }
+        use std::collections::{HashMap, HashSet};
 
-                Ok(albums
-                    .into_iter()
-                    .map(|album| Tag {
-                        kind: TagType::Album,
-                        value: album.label,
-                    })
-                    .collect())
-            }
-            TagType::Artist | TagType::AlbumArtist => {
-                let mut artists = self
-                    .kodi_client
-                    .send_method(AudioLibraryGetArtists::all_properties())
-                    .await?
-                    .artists;
-                if tag == TagType::AlbumArtist {
-                    artists = artists
-                        .into_iter()
-                        .filter(|details| details.isalbumartist)
-                        .collect();
-                }
-                for filter in filters {
-                    match filter.tag {
-                        TagType::Album => {
-                            artists = artists
-                                .into_iter()
-                                .filter(|details| details.label == filter.value)
-                                .collect();
-                        }
-                        TagType::Artist => {
-                            artists = artists
-                                .into_iter()
-                                .filter(|details| details.artist.contains(&filter.value))
-                                .collect();
-                        }
-                        _ => {
-                            return Err(
-                                format!("filtering on tag '{}' not supported", filter.tag).into()
-                            )
-                        }
-                    }
-                }
-                Ok(artists
-                    .into_iter()
-                    .map(|artist| Tag {
-                        kind: TagType::Artist,
-                        value: artist.label,
-                    })
-                    .collect())
-            }
-            _ => Err(format!("unsupported tag: {}", tag).into()),
+        let songs = self.library_find(filters, true).await?;
+        let mut tag_map: HashMap<Vec<Tag>, HashSet<String>> = HashMap::new();
+        for mut song in songs.into_iter() {
+            let value =
+                if let Some(pos) = song.tags.iter().position(|song_tag| song_tag.kind == tag) {
+                    song.tags.swap_remove(pos).value
+                } else {
+                    String::new()
+                };
+            // TODO: handle multi value tags
+            let groups = groups
+                .iter()
+                .rev()
+                .map(|tag| {
+                    song.tags
+                        .iter()
+                        .find(|song_tag| song_tag.kind == *tag)
+                        .map_or(
+                            Tag {
+                                kind: *tag,
+                                value: String::new(),
+                            },
+                            Tag::clone,
+                        )
+                })
+                .collect();
+            tag_map.entry(groups).or_default().insert(value);
         }
+        let mut tags = Vec::new();
+        for (groups, set) in tag_map.into_iter() {
+            tags.extend(groups.into_iter());
+            tags.extend(set.into_iter().map(|value| Tag { kind: tag, value }));
+        }
+        Ok(tags)
     }
 
     // TODO: Properly handle `sensitive` flag
