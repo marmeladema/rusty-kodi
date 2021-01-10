@@ -456,6 +456,7 @@ enum MPDSubCommand {
     Random {
         state: bool,
     },
+    ReplayGainStatus,
     Rescan {
         uri: Option<Url>,
     },
@@ -517,6 +518,7 @@ impl MPDSubCommand {
             Self::PlaylistInfo(_) => b"playlistinfo",
             Self::Previous => b"previous",
             Self::Random { .. } => b"random",
+            Self::ReplayGainStatus => b"replay_gain_status",
             Self::Rescan { .. } => b"rescan",
             Self::Seek { .. } => b"seek",
             Self::SeekCurrent { .. } => b"seekcur",
@@ -996,6 +998,10 @@ impl MPDSubCommand {
             }
             Self::Random { state } => {
                 handler.random(*state).await?;
+                Ok(Ok(()))
+            }
+            Self::ReplayGainStatus => {
+                stream.write_all(b"replay_gain_mode: off\n").await?;
                 Ok(Ok(()))
             }
             Self::Rescan { uri } => {
@@ -1608,6 +1614,8 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                 })
             }
         }
+    } else if name.as_ref() == b"replay_gain_status" {
+        MPDCommand::Sub(MPDSubCommand::ReplayGainStatus)
     } else if name.as_ref() == b"rescan" {
         if args.is_empty() {
             MPDCommand::Sub(MPDSubCommand::Rescan { uri: None })
