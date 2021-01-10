@@ -773,6 +773,22 @@ impl CommandHandler for KodiProxyCommandHandler {
                     operator: Operators::Is,
                     value: tag_filter.value.clone().into(),
                 }),
+                TagType::Disc => match usize::from_str_radix(&tag_filter.value, 10) {
+                    Ok(disc) => SongsFiler::Rule(SongsRule {
+                        field: SongsFields::TrackNumber,
+                        operator: Operators::Between,
+                        value: vec![
+                            (disc << 16).to_string(),
+                            ((disc << 16) + 0xffff - 1).to_string(),
+                        ]
+                        .into(),
+                    }),
+                    Err(_) => SongsFiler::Rule(SongsRule {
+                        field: SongsFields::TrackNumber,
+                        operator: Operators::Is,
+                        value: tag_filter.value.clone().into(),
+                    }),
+                },
                 TagType::Genre => SongsFiler::Rule(SongsRule {
                     field: SongsFields::Genre,
                     operator: Operators::Is,
@@ -783,11 +799,22 @@ impl CommandHandler for KodiProxyCommandHandler {
                     operator: Operators::Is,
                     value: tag_filter.value.clone().into(),
                 }),
-                TagType::Track => SongsFiler::Rule(SongsRule {
-                    field: SongsFields::TrackNumber,
-                    operator: Operators::Is,
-                    value: tag_filter.value.clone().into(),
-                }),
+                TagType::Track => match u16::from_str_radix(&tag_filter.value, 10) {
+                    Ok(track) => SongsFiler::Rule(SongsRule {
+                        field: SongsFields::TrackNumber,
+                        operator: Operators::Is,
+                        // This will look through discs 1 to 64
+                        value: (1u8..=64u8)
+                            .map(|disc| (u32::from(disc) << 16 | u32::from(track)).to_string())
+                            .collect::<Vec<_>>()
+                            .into(),
+                    }),
+                    Err(_) => SongsFiler::Rule(SongsRule {
+                        field: SongsFields::TrackNumber,
+                        operator: Operators::Is,
+                        value: tag_filter.value.clone().into(),
+                    }),
+                },
                 _ => return Err("Unsupported filter".into()),
             };
             if let Some(filter) = &mut filter {
@@ -813,6 +840,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                     vec.extend(song.album.map(Tag::album));
                     vec.extend(song.genre.into_iter().map(Tag::genre));
                     vec.extend(song.title.map(Tag::title));
+                    vec.extend(song.disc.map(|disc| Tag::disc(disc.to_string())));
                     vec.extend(song.track.map(|track| Tag::track(track.to_string())));
                     vec.extend(song.year.map(|year| Tag::date(year.to_string())));
                     vec

@@ -139,6 +139,13 @@ impl Tag {
         }
     }
 
+    pub fn disc(value: String) -> Self {
+        Self {
+            kind: TagType::Disc,
+            value,
+        }
+    }
+
     pub fn date(value: String) -> Self {
         Self {
             kind: TagType::Date,

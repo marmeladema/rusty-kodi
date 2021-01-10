@@ -854,15 +854,20 @@ async fn find(
     filters: &[TagFilter],
     buf: &mut Vec<u8>,
 ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
-    buf.clear();
-    let mut cursor = Cursor::new(&mut *buf);
-    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    for song in handler.library_find(filters, true).await? {
-        write!(writer, "{}", song).unwrap();
+    match handler.library_find(filters, true).await {
+        Ok(songs) => {
+            buf.clear();
+            let mut cursor = Cursor::new(&mut *buf);
+            let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+            for song in songs {
+                write!(writer, "{}", song).unwrap();
+            }
+            let data = &cursor.get_ref()[..(cursor.position() as usize)];
+            stream.write_all(data).await?;
+            Ok(Ok(()))
+        }
+        Err(err) => Ok(Err(CommandError::Unknown(err.to_string()))),
     }
-    let data = &cursor.get_ref()[..(cursor.position() as usize)];
-    stream.write_all(data).await?;
-    Ok(Ok(()))
 }
 
 async fn search(
@@ -871,15 +876,20 @@ async fn search(
     filters: &[TagFilter],
     buf: &mut Vec<u8>,
 ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
-    buf.clear();
-    let mut cursor = Cursor::new(&mut *buf);
-    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    for song in handler.library_find(filters, false).await? {
-        write!(writer, "{}", song).unwrap();
+    match handler.library_find(filters, false).await {
+        Ok(songs) => {
+            buf.clear();
+            let mut cursor = Cursor::new(&mut *buf);
+            let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+            for song in songs {
+                write!(writer, "{}", song).unwrap();
+            }
+            let data = &cursor.get_ref()[..(cursor.position() as usize)];
+            stream.write_all(data).await?;
+            Ok(Ok(()))
+        }
+        Err(err) => Ok(Err(CommandError::Unknown(err.to_string()))),
     }
-    let data = &cursor.get_ref()[..(cursor.position() as usize)];
-    stream.write_all(data).await?;
-    Ok(Ok(()))
 }
 
 async fn tagtypes(
