@@ -104,6 +104,13 @@ pub struct Tag {
 }
 
 impl Tag {
+    pub fn album(value: String) -> Self {
+        Self {
+            kind: TagType::Album,
+            value,
+        }
+    }
+
     pub fn artist(value: String) -> Self {
         Self {
             kind: TagType::Artist,
@@ -111,9 +118,9 @@ impl Tag {
         }
     }
 
-    pub fn album(value: String) -> Self {
+    pub fn albumartist(value: String) -> Self {
         Self {
-            kind: TagType::Album,
+            kind: TagType::AlbumArtist,
             value,
         }
     }

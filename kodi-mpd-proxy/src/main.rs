@@ -837,6 +837,7 @@ impl CommandHandler for KodiProxyCommandHandler {
                 tags: {
                     let mut vec = Vec::new();
                     vec.extend(song.artist.into_iter().map(Tag::artist));
+                    vec.extend(song.albumartist.into_iter().map(Tag::albumartist));
                     vec.extend(song.album.map(Tag::album));
                     vec.extend(song.genre.into_iter().map(Tag::genre));
                     vec.extend(song.title.map(Tag::title));
