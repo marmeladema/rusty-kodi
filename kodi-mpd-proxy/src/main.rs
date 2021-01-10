@@ -735,9 +735,11 @@ impl CommandHandler for KodiProxyCommandHandler {
         }
     }
 
+    // TODO: Properly handle `sensitive` flag
     async fn library_find(
         &mut self,
         filters: &[TagFilter],
+        _sensitive: bool,
     ) -> Result<Vec<Song>, Box<dyn std::error::Error + Send + Sync>> {
         use kodi_jsonrpc_client::types::list::filter::fields::Songs as SongsFields;
         use kodi_jsonrpc_client::types::list::filter::rule::Songs as SongsRule;

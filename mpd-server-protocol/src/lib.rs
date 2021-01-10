@@ -366,6 +366,7 @@ pub trait CommandHandler {
     async fn library_find(
         &mut self,
         filters: &[TagFilter],
+        sensitive: bool,
     ) -> Result<Vec<Song>, Box<dyn std::error::Error + Send + Sync>>;
 
     async fn idle(
@@ -470,6 +471,9 @@ enum MPDSubCommand {
     Rescan {
         uri: Option<Url>,
     },
+    Search {
+        filters: Vec<TagFilter>,
+    },
     Seek {
         songpos: usize,
         time: Duration,
@@ -532,6 +536,7 @@ impl MPDSubCommand {
             Self::ReplayGainMode(..) => b"replay_gain_mode",
             Self::ReplayGainStatus => b"replay_gain_status",
             Self::Rescan { .. } => b"rescan",
+            Self::Search { .. } => b"search",
             Self::Seek { .. } => b"seek",
             Self::SeekCurrent { .. } => b"seekcur",
             Self::SeekId { .. } => b"seekid",
@@ -852,7 +857,24 @@ async fn find(
     buf.clear();
     let mut cursor = Cursor::new(&mut *buf);
     let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    for song in handler.library_find(filters).await? {
+    for song in handler.library_find(filters, true).await? {
+        write!(writer, "{}", song).unwrap();
+    }
+    let data = &cursor.get_ref()[..(cursor.position() as usize)];
+    stream.write_all(data).await?;
+    Ok(Ok(()))
+}
+
+async fn search(
+    stream: &mut (impl AsyncBufReadExt + AsyncWriteExt + Unpin),
+    handler: &mut impl CommandHandler,
+    filters: &[TagFilter],
+    buf: &mut Vec<u8>,
+) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
+    buf.clear();
+    let mut cursor = Cursor::new(&mut *buf);
+    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+    for song in handler.library_find(filters, false).await? {
         write!(writer, "{}", song).unwrap();
     }
     let data = &cursor.get_ref()[..(cursor.position() as usize)];
@@ -1033,6 +1055,7 @@ impl MPDSubCommand {
                 handler.library_update(uri.as_ref(), true).await?;
                 Ok(Ok(()))
             }
+            Self::Search { filters } => search(stream, handler, filters, buf).await,
             Self::Seek { songpos, time } => {
                 handler.seek(QueueSong::from_pos(*songpos), *time).await?;
                 Ok(Ok(()))
@@ -1681,6 +1704,34 @@ fn parse_command(name: &BStr, args: &[u8]) -> MPDCommand {
                 }
             }
         }
+    } else if name.as_ref() == b"search" {
+        let mut filters = Vec::new();
+        while !args.is_empty() {
+            let (mut arg, rest) = next_arg!(name, args, BString);
+            arg.make_ascii_lowercase();
+            if arg.as_slice() == b"sort" || arg.as_slice() == b"window" {
+                break;
+            }
+            args = rest;
+            let filter_tag = match TagType::from_bytes(arg.as_slice()) {
+                Some(tag) => tag,
+                None => {
+                    let msg = format!("Unknown filter type: {}", arg);
+                    return MPDCommand::Sub(MPDSubCommand::Invalid {
+                        name: BString::from(name),
+                        args: BString::from(args),
+                        reason: CommandError::InvalidArgument(msg),
+                    });
+                }
+            };
+            let (arg, rest) = next_arg!(name, args, BString);
+            args = rest;
+            filters.push(TagFilter {
+                tag: filter_tag,
+                value: Vec::from(arg).into_string_lossy(),
+            });
+        }
+        MPDCommand::Sub(MPDSubCommand::Search { filters })
     } else if name.as_ref() == b"seek" {
         let (songpos, rest) = next_arg!(name, args, usize);
         args = rest;
