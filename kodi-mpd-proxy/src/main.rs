@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use bstr::{BStr, BString};
+use chrono::{DateTime, FixedOffset, TimeZone};
 use clap::Clap;
 use enum_map::EnumMap;
 use enumset::EnumSet;
@@ -100,6 +101,14 @@ fn usize_to_bstring(val: usize) -> BString {
     BString::from(buf)
 }
 
+fn parse_kodi_datetime(input: impl AsRef<str>) -> Option<DateTime<FixedOffset>> {
+    // TODO: use kodi timezone or fallback to local timezome
+    match FixedOffset::east(0).datetime_from_str(input.as_ref(), "%Y-%m-%d %H:%M:%S") {
+        Ok(datetime) => Some(datetime.into()),
+        Err(_) => None,
+    }
+}
+
 #[async_trait]
 impl CommandHandler for KodiProxyCommandHandler {
     async fn get_status(&mut self) -> MPDStatus {
@@ -187,14 +196,15 @@ impl CommandHandler for KodiProxyCommandHandler {
                                 .unwrap();
                             let mut path = PathBuf::from(&source.label);
                             path.push(rest);
+                            let last_modified = file.lastmodified.and_then(parse_kodi_datetime);
                             match file.filetype {
                                 KodiFileType::Directory => LibraryEntry::Directory {
                                     path,
-                                    last_modified: None,
+                                    last_modified,
                                 },
                                 KodiFileType::File => LibraryEntry::File(Song {
                                     path,
-                                    last_modified: None,
+                                    last_modified,
                                     format: None,
                                     duration: file.duration,
                                     tags: {

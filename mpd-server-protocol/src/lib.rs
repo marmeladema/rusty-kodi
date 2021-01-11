@@ -3,12 +3,13 @@ mod tags;
 pub use crate::tags::*;
 use async_trait::async_trait;
 use bstr::{BStr, BString, ByteSlice, ByteVec};
+use chrono::{DateTime, FixedOffset, SecondsFormat};
 use enumset::{EnumSet, EnumSetType};
 use std::io::{Cursor, Write};
 use std::ops::RangeInclusive;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tracing::{event, Level};
 pub use url::Url;
@@ -195,7 +196,7 @@ impl MPDStatus {
 #[derive(Debug, Default)]
 pub struct Song {
     pub path: PathBuf,
-    pub last_modified: Option<SystemTime>,
+    pub last_modified: Option<DateTime<FixedOffset>>,
     pub format: Option<String>,
     pub duration: Option<usize>,
     pub tags: Vec<Tag>,
@@ -208,7 +209,13 @@ impl std::fmt::Display for Song {
             "file: {}",
             <&BStr>::from(self.path.as_os_str().as_bytes())
         )?;
-        // TODO: handle Last-Modified
+        if let Some(last_modified) = &self.last_modified {
+            writeln!(
+                f,
+                "Last-Modified: {}",
+                last_modified.to_rfc3339_opts(SecondsFormat::Secs, true)
+            )?;
+        }
         if let Some(format) = &self.format {
             writeln!(f, "Format: {}", format)?;
         }
@@ -226,7 +233,7 @@ impl std::fmt::Display for Song {
 pub enum LibraryEntry {
     Directory {
         path: PathBuf,
-        last_modified: Option<SystemTime>,
+        last_modified: Option<DateTime<FixedOffset>>,
     },
     File(Song),
 }
@@ -234,13 +241,22 @@ pub enum LibraryEntry {
 impl std::fmt::Display for LibraryEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Directory { path, .. } => {
+            Self::Directory {
+                path,
+                last_modified,
+            } => {
                 writeln!(
                     f,
                     "directory: {}",
                     <&BStr>::from(path.as_os_str().as_bytes())
                 )?;
-                // TODO: handle Last-Modified
+                if let Some(last_modified) = last_modified {
+                    writeln!(
+                        f,
+                        "Last-Modified: {}",
+                        last_modified.to_rfc3339_opts(SecondsFormat::Secs, true)
+                    )?;
+                }
                 Ok(())
             }
             Self::File(file) => write!(f, "{}", file),
