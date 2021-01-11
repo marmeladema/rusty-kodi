@@ -69,6 +69,24 @@ impl KodiProxyCommandHandler {
         None
     }
 
+    async fn path_remap_to_external(&self, path: &Path) -> Option<PathBuf> {
+        let sources = self
+            .kodi_client
+            .send_method(AudioLibraryGetSources::default())
+            .await
+            .unwrap()
+            .sources;
+        for source in sources {
+            let base = Path::new(OsStr::from_bytes(source.file.as_bytes()));
+            if let Ok(rest) = path.strip_prefix(base) {
+                let mut path = PathBuf::from(&source.label);
+                path.push(rest);
+                return Some(path);
+            }
+        }
+        None
+    }
+
     async fn song_id_to_pos(&self, songid: usize) -> Option<usize> {
         for (pos, item) in self.player.playlist_items().await.iter().enumerate().rev() {
             if item.id == Some(songid) {
@@ -793,24 +811,27 @@ impl CommandHandler for KodiProxyCommandHandler {
         }
         let mut songs = Vec::new();
         for song in self.kodi_client.send_method(method).await?.songs {
-            songs.push(Song {
-                path: song.file.unwrap().into(),
-                last_modified: None,
-                format: None,
-                duration: song.duration,
-                tags: {
-                    let mut vec = Vec::new();
-                    vec.extend(song.artist.into_iter().map(Tag::artist));
-                    vec.extend(song.albumartist.into_iter().map(Tag::albumartist));
-                    vec.extend(song.album.map(Tag::album));
-                    vec.extend(song.genre.into_iter().map(Tag::genre));
-                    vec.extend(song.title.map(Tag::title));
-                    vec.extend(song.disc.map(|disc| Tag::disc(disc.to_string())));
-                    vec.extend(song.track.map(|track| Tag::track(track.to_string())));
-                    vec.extend(song.year.map(|year| Tag::date(year.to_string())));
-                    vec
-                },
-            });
+            let path = Path::new(song.file.as_ref().map_or("", |path| path.as_str()));
+            if let Some(path) = self.path_remap_to_external(&path).await {
+                songs.push(Song {
+                    path,
+                    last_modified: None,
+                    format: None,
+                    duration: song.duration,
+                    tags: {
+                        let mut vec = Vec::new();
+                        vec.extend(song.artist.into_iter().map(Tag::artist));
+                        vec.extend(song.albumartist.into_iter().map(Tag::albumartist));
+                        vec.extend(song.album.map(Tag::album));
+                        vec.extend(song.genre.into_iter().map(Tag::genre));
+                        vec.extend(song.title.map(Tag::title));
+                        vec.extend(song.disc.map(|disc| Tag::disc(disc.to_string())));
+                        vec.extend(song.track.map(|track| Tag::track(track.to_string())));
+                        vec.extend(song.year.map(|year| Tag::date(year.to_string())));
+                        vec
+                    },
+                });
+            }
         }
         Ok(songs)
     }
