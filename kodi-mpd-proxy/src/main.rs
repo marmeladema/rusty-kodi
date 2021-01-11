@@ -111,7 +111,7 @@ fn parse_kodi_datetime(input: impl AsRef<str>) -> Option<DateTime<FixedOffset>> 
 
 #[async_trait]
 impl CommandHandler for KodiProxyCommandHandler {
-    async fn get_status(&mut self) -> MPDStatus {
+    async fn status(&mut self) -> MPDStatus {
         let mut status = MPDStatus {
             volume: self.player.volume().await,
             ..Default::default()
@@ -619,8 +619,8 @@ impl CommandHandler for KodiProxyCommandHandler {
         Ok(())
     }
 
-    async fn volume_get(&mut self) -> usize {
-        self.player.volume().await.unwrap().into()
+    async fn volume_get(&mut self) -> Option<usize> {
+        Some(self.player.volume().await.unwrap().into())
     }
 
     async fn volume_set(&mut self, level: usize) {

@@ -299,11 +299,14 @@ impl QueueSong {
 pub trait CommandHandler {
     // fn url_parse(input: &str) -> Url;
 
-    async fn get_status(&mut self) -> MPDStatus;
+    /// Reports the current status of the player and the volume level.
+    async fn status(&mut self) -> MPDStatus;
     async fn list_directory(
         &mut self,
         path: Option<&Url>,
     ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>>;
+
+    // Queue management
 
     /// Returns the current song in the queue.
     async fn queue_current(&mut self) -> Option<QueueEntry>;
@@ -341,24 +344,46 @@ pub trait CommandHandler {
 
     async fn queue_clear(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
+    // Playback control
+
+    /// Plays previous song in the queue.
     async fn previous(&mut self);
+
+    /// Begins playing the queue at song id `QueueSong::Id` or song number `QueueSong::Pos`.
     async fn play(&mut self, song: Option<QueueSong>);
+
+    /// Plays next song in the queue.
     async fn next(&mut self);
+
+    /// Stops playing.
     async fn stop(&mut self);
+
+    /// Pause or resume playback. Pass `Some(true)` to pause playback or `Some(false)` to resume playback.
+    /// With `None`, the pause state is toggled.
     async fn pause(&mut self, pause: Option<bool>);
-    async fn random(&mut self, state: bool)
-        -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Seeks to the position `time` of song id `QueueSong::Id` or song number `QueueSong::Pos` in the queue.
     async fn seek(
         &mut self,
         song: QueueSong,
         time: Duration,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Seeks to the position `time` within the current song.
+    // TODO: If prefixed by + or -, then the time is relative to the current playing position.
     async fn seek_current(
         &mut self,
         time: Duration,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-    async fn volume_get(&mut self) -> usize;
+    // Playback options
+
+    // Sets random state to `state`.
+    async fn random(&mut self, state: bool)
+        -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    /// Read the volume.
+    async fn volume_get(&mut self) -> Option<usize>;
+    /// Sets volume to `level`, the range of volume is [0-100].
     async fn volume_set(&mut self, level: usize);
 
     // Library APIs
@@ -645,12 +670,14 @@ async fn getvol(
     handler: &mut impl CommandHandler,
     buf: &mut Vec<u8>,
 ) -> Result<Result<(), CommandError>, Box<dyn std::error::Error + Send + Sync>> {
-    buf.clear();
-    let mut cursor = Cursor::new(&mut *buf);
-    let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
-    writeln!(writer, "volume: {}", handler.volume_get().await).unwrap();
-    let data = &cursor.get_ref()[..(cursor.position() as usize)];
-    stream.write_all(data).await?;
+    if let Some(volume) = handler.volume_get().await {
+        buf.clear();
+        let mut cursor = Cursor::new(&mut *buf);
+        let writer = &mut cursor as &mut (dyn std::io::Write + Send + Sync);
+        writeln!(writer, "volume: {}", volume).unwrap();
+        let data = &cursor.get_ref()[..(cursor.position() as usize)];
+        stream.write_all(data).await?;
+    }
     Ok(Ok(()))
 }
 
@@ -1099,7 +1126,7 @@ impl MPDSubCommand {
                 Ok(Ok(()))
             }
             Self::Status => {
-                handler.get_status().await.send(stream).await?;
+                handler.status().await.send(stream).await?;
                 Ok(Ok(()))
             }
             Self::Stats => Ok(Ok(())),
