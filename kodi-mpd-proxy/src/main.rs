@@ -11,10 +11,8 @@ use mpd_server_protocol::{
     CommandHandler, LibraryEntry, MPDState, MPDStatus, MPDSubsystem, QueueEntry, QueueSong, Server,
     Song, Tag, TagFilter, TagType, Url,
 };
-use std::ffi::OsStr;
 use std::net::SocketAddr;
 use std::ops::RangeInclusive;
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,6 +33,34 @@ struct KodiProxyCommandHandler {
     tags: EnumSet<TagType>,
 }
 
+struct PathMapper {
+    sources: Vec<kodi_jsonrpc_client::types::library::details::Source>,
+}
+
+impl PathMapper {
+    fn to_internal(&self, external: &Path) -> Option<PathBuf> {
+        for source in &self.sources {
+            if let Ok(rest) = external.strip_prefix(&source.label) {
+                let mut path = PathBuf::from(&source.file);
+                path.push(rest);
+                return Some(path);
+            }
+        }
+        None
+    }
+
+    fn to_external(&self, internal: &Path) -> Option<PathBuf> {
+        for source in &self.sources {
+            if let Ok(rest) = internal.strip_prefix(&source.file) {
+                let mut path = PathBuf::from(&source.label);
+                path.push(rest);
+                return Some(path);
+            }
+        }
+        None
+    }
+}
+
 impl KodiProxyCommandHandler {
     fn new(
         kodi_client: KodiClient,
@@ -51,40 +77,14 @@ impl KodiProxyCommandHandler {
         }
     }
 
-    async fn path_remap(&self, path: &Path) -> Option<PathBuf> {
+    async fn path_mapper(&self) -> PathMapper {
         let sources = self
             .kodi_client
             .send_method(AudioLibraryGetSources::default())
             .await
             .unwrap()
             .sources;
-        for source in sources {
-            let base = Path::new(OsStr::from_bytes(source.label.as_bytes()));
-            if let Ok(rest) = path.strip_prefix(base) {
-                let mut path = PathBuf::from(&source.file);
-                path.push(rest);
-                return Some(path);
-            }
-        }
-        None
-    }
-
-    async fn path_remap_to_external(&self, path: &Path) -> Option<PathBuf> {
-        let sources = self
-            .kodi_client
-            .send_method(AudioLibraryGetSources::default())
-            .await
-            .unwrap()
-            .sources;
-        for source in sources {
-            let base = Path::new(OsStr::from_bytes(source.file.as_bytes()));
-            if let Ok(rest) = path.strip_prefix(base) {
-                let mut path = PathBuf::from(&source.label);
-                path.push(rest);
-                return Some(path);
-            }
-        }
-        None
+        PathMapper { sources }
     }
 
     async fn song_id_to_pos(&self, songid: usize) -> Option<usize> {
@@ -124,6 +124,28 @@ fn parse_kodi_datetime(input: impl AsRef<str>) -> Option<DateTime<FixedOffset>> 
     match FixedOffset::east(0).datetime_from_str(input.as_ref(), "%Y-%m-%d %H:%M:%S") {
         Ok(datetime) => Some(datetime.into()),
         Err(_) => None,
+    }
+}
+
+fn item_to_song(
+    path_mapper: &PathMapper,
+    item: kodi_jsonrpc_client::types::list::item::All,
+) -> Option<Song> {
+    let path = Path::new(item.file.as_ref().map_or("", |path| path.as_str()));
+    if let Some(path) = path_mapper.to_external(&path) {
+        Some(Song {
+            path,
+            tags: {
+                let mut vec = Vec::new();
+                vec.extend(item.artist.into_iter().map(Tag::artist));
+                vec.extend(item.album.map(Tag::album));
+                vec.extend(item.title.map(Tag::title));
+                vec
+            },
+            ..Default::default()
+        })
+    } else {
+        None
     }
 }
 
@@ -169,10 +191,11 @@ impl CommandHandler for KodiProxyCommandHandler {
         &mut self,
         url: Option<&Url>,
     ) -> Result<Vec<LibraryEntry>, Box<dyn std::error::Error + Send + Sync>> {
-        let resp = self
+        let sources = self
             .kodi_client
             .send_method(AudioLibraryGetSources::default())
-            .await?;
+            .await?
+            .sources;
 
         let path = if let Some(url) = url {
             if url.scheme() != "file" {
@@ -183,8 +206,7 @@ impl CommandHandler for KodiProxyCommandHandler {
             PathBuf::default()
         };
         if path == Path::new("/") || path == Path::new("") {
-            Ok(resp
-                .sources
+            Ok(sources
                 .into_iter()
                 .map(|source| LibraryEntry::Directory {
                     path: PathBuf::from(source.label),
@@ -192,58 +214,47 @@ impl CommandHandler for KodiProxyCommandHandler {
                 })
                 .collect())
         } else {
-            for source in resp.sources {
-                let base = Path::new(OsStr::from_bytes(source.label.as_bytes()));
-                if let Ok(rest) = path.strip_prefix("/").unwrap().strip_prefix(base) {
-                    let mut path = PathBuf::from(&source.file);
-                    path.push(rest);
-                    let entries = self
-                        .kodi_client
-                        .send_method(FilesGetDirectory::all_properties(
-                            path.to_str().unwrap().to_owned(),
-                            kodi_jsonrpc_client::types::files::Media::Music,
-                        ))
-                        .await?;
-                    return Ok(entries
-                        .files
-                        .into_iter()
-                        .map(move |file| {
-                            let source_path = Path::new(OsStr::from_bytes(source.file.as_bytes()));
-                            let rest = Path::new(OsStr::from_bytes(file.file.as_bytes()))
-                                .strip_prefix(source_path)
-                                .unwrap();
-                            let mut path = PathBuf::from(&source.label);
-                            path.push(rest);
-                            let last_modified = file.lastmodified.and_then(parse_kodi_datetime);
-                            match file.filetype {
-                                KodiFileType::Directory => LibraryEntry::Directory {
-                                    path,
-                                    last_modified,
+            let path_mapper = PathMapper { sources };
+            if let Some(internal) = path_mapper.to_internal(path.strip_prefix("/").unwrap()) {
+                let entries = self
+                    .kodi_client
+                    .send_method(FilesGetDirectory::all_properties(
+                        internal.to_str().unwrap().to_owned(),
+                        kodi_jsonrpc_client::types::files::Media::Music,
+                    ))
+                    .await?;
+                return Ok(entries
+                    .files
+                    .into_iter()
+                    .map(move |file| {
+                        let path = path_mapper.to_external(file.file.as_ref()).unwrap();
+                        let last_modified = file.lastmodified.and_then(parse_kodi_datetime);
+                        match file.filetype {
+                            KodiFileType::Directory => LibraryEntry::Directory {
+                                path,
+                                last_modified,
+                            },
+                            KodiFileType::File => LibraryEntry::File(Song {
+                                path,
+                                last_modified,
+                                format: None,
+                                duration: file.duration,
+                                tags: {
+                                    let mut vec = Vec::new();
+                                    vec.extend(file.artist.into_iter().map(Tag::artist));
+                                    vec.extend(file.album.map(Tag::album));
+                                    vec.extend(file.genre.into_iter().map(Tag::genre));
+                                    vec.extend(file.title.map(Tag::title));
+                                    vec.extend(
+                                        file.track.map(|track| Tag::track(track.to_string())),
+                                    );
+                                    vec.extend(file.year.map(|year| Tag::date(year.to_string())));
+                                    vec
                                 },
-                                KodiFileType::File => LibraryEntry::File(Song {
-                                    path,
-                                    last_modified,
-                                    format: None,
-                                    duration: file.duration,
-                                    tags: {
-                                        let mut vec = Vec::new();
-                                        vec.extend(file.artist.into_iter().map(Tag::artist));
-                                        vec.extend(file.album.map(Tag::album));
-                                        vec.extend(file.genre.into_iter().map(Tag::genre));
-                                        vec.extend(file.title.map(Tag::title));
-                                        vec.extend(
-                                            file.track.map(|track| Tag::track(track.to_string())),
-                                        );
-                                        vec.extend(
-                                            file.year.map(|year| Tag::date(year.to_string())),
-                                        );
-                                        vec
-                                    },
-                                }),
-                            }
-                        })
-                        .collect());
-                }
+                            }),
+                        }
+                    })
+                    .collect());
             }
             Ok(Vec::new())
         }
@@ -256,21 +267,13 @@ impl CommandHandler for KodiProxyCommandHandler {
                 .send_method(PlayerGetItem::all_properties(self.player.id()))
                 .await
                 .unwrap();
-            return Some(QueueEntry {
-                song: Song {
-                    path: PathBuf::from(&item.file.unwrap()),
-                    tags: {
-                        let mut vec = Vec::new();
-                        vec.extend(item.artist.into_iter().map(Tag::artist));
-                        vec.extend(item.album.map(Tag::album));
-                        vec.extend(item.title.map(Tag::title));
-                        vec
-                    },
-                    ..Default::default()
-                },
+            let id = item.id?;
+            let path_mapper = self.path_mapper().await;
+            item_to_song(&path_mapper, item).map(|song| QueueEntry {
+                song,
                 position,
-                id: usize_to_bstring(item.id.unwrap()),
-            });
+                id: usize_to_bstring(id),
+            })
         } else {
             None
         }
@@ -286,21 +289,14 @@ impl CommandHandler for KodiProxyCommandHandler {
         } else {
             (0, &playlist_items[..])
         };
-        items.extend(range.iter().enumerate().map(|(idx, item)| QueueEntry {
-            song: Song {
-                path: PathBuf::from(item.file.as_ref().unwrap()),
-                tags: {
-                    let mut vec = Vec::new();
-                    vec.extend(item.artist.clone().into_iter().map(Tag::artist));
-                    vec.extend(item.album.clone().map(Tag::album));
-                    vec.extend(item.title.clone().map(Tag::title));
-                    vec
-                },
-                ..Default::default()
-            },
-            position: idx + start,
-            // TODO: properly files without library id
-            id: usize_to_bstring(item.id.unwrap_or(usize::MAX)),
+        let path_mapper = self.path_mapper().await;
+        items.extend(range.iter().enumerate().filter_map(|(idx, item)| {
+            item_to_song(&path_mapper, item.clone()).map(|song| QueueEntry {
+                song,
+                position: idx + start,
+                // TODO: properly files without library id
+                id: usize_to_bstring(item.id.unwrap_or(usize::MAX)),
+            })
         }));
         items
     }
@@ -323,10 +319,12 @@ impl CommandHandler for KodiProxyCommandHandler {
 
         let playlist_id = self.player.playlist().await.unwrap();
 
-        let path = url.to_file_path().unwrap();
-        let path = self
-            .path_remap(path.strip_prefix("/")?)
-            .await
+        let path_mapper = self.path_mapper().await;
+        let external = url.to_file_path().ok();
+        let path = external
+            .as_ref()
+            .and_then(|path| path.strip_prefix("/").ok())
+            .and_then(|path| path_mapper.to_internal(path))
             .ok_or("No such directory")?;
 
         let FilesGetFileDetailsResponse::FileDetails(details) = self
@@ -372,10 +370,12 @@ impl CommandHandler for KodiProxyCommandHandler {
 
         let playlist_id = self.player.playlist().await.unwrap();
 
-        let path = url.to_file_path().unwrap();
-        let path = self
-            .path_remap(path.strip_prefix("/")?)
-            .await
+        let path_mapper = self.path_mapper().await;
+        let external = url.to_file_path().ok();
+        let path = external
+            .as_ref()
+            .and_then(|path| path.strip_prefix("/").ok())
+            .and_then(|path| path_mapper.to_internal(path))
             .ok_or("No such directory")?;
 
         let filetype = match self
@@ -650,15 +650,17 @@ impl CommandHandler for KodiProxyCommandHandler {
 
     async fn library_update(
         &mut self,
-        uri: Option<&Url>,
+        url: Option<&Url>,
         _: bool,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let directory = if let Some(uri) = uri {
-            let path = uri.to_file_path().unwrap();
-            let path = self
-                .path_remap(path.strip_prefix("/").unwrap())
-                .await
-                .unwrap();
+        let directory = if let Some(url) = url {
+            let path_mapper = self.path_mapper().await;
+            let external = url.to_file_path().ok();
+            let path = external
+                .as_ref()
+                .and_then(|path| path.strip_prefix("/").ok())
+                .and_then(|path| path_mapper.to_internal(path))
+                .ok_or("No such directory")?;
             Some(path.to_str().unwrap().to_string())
         } else {
             None
@@ -809,10 +811,13 @@ impl CommandHandler for KodiProxyCommandHandler {
         if let Some(filter) = filter {
             method.filter = Some(filter.into());
         }
+
+        let path_mapper = self.path_mapper().await;
+
         let mut songs = Vec::new();
         for song in self.kodi_client.send_method(method).await?.songs {
             let path = Path::new(song.file.as_ref().map_or("", |path| path.as_str()));
-            if let Some(path) = self.path_remap_to_external(&path).await {
+            if let Some(path) = path_mapper.to_external(&path) {
                 songs.push(Song {
                     path,
                     last_modified: None,
