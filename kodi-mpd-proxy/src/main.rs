@@ -307,9 +307,9 @@ impl CommandHandler for KodiProxyCommandHandler {
 
         let path = url.to_file_path().unwrap();
         let path = self
-            .path_remap(path.strip_prefix("/").unwrap())
+            .path_remap(path.strip_prefix("/")?)
             .await
-            .unwrap();
+            .ok_or("No such directory")?;
 
         let FilesGetFileDetailsResponse::FileDetails(details) = self
             .kodi_client
@@ -356,9 +356,9 @@ impl CommandHandler for KodiProxyCommandHandler {
 
         let path = url.to_file_path().unwrap();
         let path = self
-            .path_remap(path.strip_prefix("/").unwrap())
+            .path_remap(path.strip_prefix("/")?)
             .await
-            .unwrap();
+            .ok_or("No such directory")?;
 
         let filetype = match self
             .kodi_client
